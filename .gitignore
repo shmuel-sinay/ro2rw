@@ -2,3 +2,6 @@ work/
 logs/
 platform-tools/
 settings.json
+src/bin/
+src/obj/
+out/

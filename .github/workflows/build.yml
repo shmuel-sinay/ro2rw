@@ -1,0 +1,46 @@
+name: Build RO2RW PC
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install tools
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q mono-mcs erofs-utils e2fsprogs android-sdk-libsparse-utils attr
+      - name: Run core tests
+        run: sudo bash tests/run-tests.sh "$RUNNER_TEMP/t"
+
+  build:
+    needs: test
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build EXE
+        run: dotnet build src/RO2RW-PC.csproj -c Release -o out
+      - name: Upload EXE
+        uses: actions/upload-artifact@v4
+        with:
+          name: RO2RW-PC
+          path: out/RO2RW-PC.exe
+      - name: Publish "latest" release
+        if: github.event_name == 'push'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: RO2RW PC (latest build)
+          prerelease: true
+          make_latest: true
+          files: out/RO2RW-PC.exe
+          body: |
+            הורד את RO2RW-PC.exe והפעל אותו בלחיצה כפולה (Windows 10/11).
+            נבנה אוטומטית מהקומיט ${{ github.sha }}.
