@@ -32,15 +32,42 @@ jobs:
         with:
           name: RO2RW-PC
           path: out/RO2RW-PC.exe
-      - name: Publish "latest" release
-        if: github.event_name == 'push'
+      - name: Publish dev build
+        if: github.event_name == 'push' && !startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
           tag_name: latest
-          name: RO2RW PC (latest build)
+          name: RO2RW PC (גרסת פיתוח)
           prerelease: true
+          make_latest: false
+          files: out/RO2RW-PC.exe
+          body: |
+            גרסת פיתוח שנבנתה אוטומטית מהקומיט ${{ github.sha }}.
+            לגרסה היציבה ראו את המהדורה האחרונה.
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: RO2RW PC ${{ github.ref_name }}
+          prerelease: false
           make_latest: true
           files: out/RO2RW-PC.exe
           body: |
-            הורד את RO2RW-PC.exe והפעל אותו בלחיצה כפולה (Windows 10/11).
-            נבנה אוטומטית מהקומיט ${{ github.sha }}.
+            ## RO2RW PC ${{ github.ref_name }}
+
+            ממיר את מחיצות super.img של אנדרואיד מקריאה בלבד (EROFS או ext4) ל-ext4 לקריאה וכתיבה, על המחשב בלבד.
+
+            ### הורדה והפעלה
+            1. הורידו את **RO2RW-PC.exe** מהקבצים למטה.
+            2. הפעילו בלחיצה כפולה (Windows 10/11, בלי התקנה). אם מופיעה אזהרת SmartScreen: "מידע נוסף" ואז "הפעל בכל זאת".
+            3. בחרו super.img, סמנו מחיצות, בחרו הגדלה (MAX או FIXED) ולחצו "התחל המרה".
+            4. הפלט נשמר בתיקייה RO2RW_output שליד הקובץ, יחד עם הוראות צריבה.
+
+            ### נתמך
+            - קלט: super raw, sparse ומפוצל (super.img.0, super.img.1 ...)
+            - EROFS: ללא דחיסה, LZ4/LZ4HC, DEFLATE, ztailpacking, fragments, dedupe
+            - ext4: כולל shared_blocks, 64bit, metadata_csum, inline_data
+            - נשמרים: הרשאות, SELinux, capabilities, קישורים
+            - לא נתמך עדיין: EROFS עם LZMA או ZSTD
+
+            ⚠️ גבו את המכשיר לפני הצריבה. האחריות על המשתמש.
