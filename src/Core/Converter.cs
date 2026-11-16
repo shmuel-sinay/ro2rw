@@ -31,6 +31,9 @@ namespace Ro2rwPc
         public int FixedMb = 100;
         /// <summary>FIXED mode per category (S/V/P/SE/OT) in MB; null = FixedMb for all.</summary>
         public Dictionary<string, int> FixedMbPer;
+        /// <summary>Per partition name extra MB (overrides categories). Set by a SuperPlan.</summary>
+        public Dictionary<string, int> PerPartitionMb;
+        public HashSet<string> ConvertOnly;
         public bool SparseOutput = true;
         public bool PatchVendorFstab = true;
         public bool PatchVbmeta = true;
@@ -265,6 +268,7 @@ namespace Ro2rwPc
                 {
                     int mb = st.FixedMb;
                     if (st.FixedMbPer != null && st.FixedMbPer.ContainsKey(p.Category)) mb = st.FixedMbPer[p.Category];
+                    if (st.PerPartitionMb != null && st.PerPartitionMb.ContainsKey(p.Name)) mb = st.PerPartitionMb[p.Name];
                     extra[p] = (long)mb << 20;
                     total += extra[p];
                 }
@@ -293,6 +297,19 @@ namespace Ro2rwPc
 
         // ------------------------------------------------------------ write
         public string Write(Settings st, string outDir, string outName = "super_rw.img")
+        {
+            string fp = Path.Combine(outDir, outName), rp = st.SparseOutput ? fp + ".raw.tmp" : fp;
+            try { return WriteInner(st, outDir, outName); }
+            catch
+            {
+                // remove partial output (cancel / error)
+                foreach (var f in new[] { rp, fp })
+                    try { if (File.Exists(f) && !Path.GetFullPath(f).Equals(Path.GetFullPath(InputPath), StringComparison.OrdinalIgnoreCase)) File.Delete(f); } catch { }
+                throw;
+            }
+        }
+
+        string WriteInner(Settings st, string outDir, string outName)
         {
             string finalPath = Path.Combine(outDir, outName);
             string rawPath = st.SparseOutput ? finalPath + ".raw.tmp" : finalPath;
@@ -361,6 +378,7 @@ namespace Ro2rwPc
             long done = 0;
             while (done < p.FinalBytes)
             {
+                if (Cancelled()) throw new OperationCanceledException();
                 int n = (int)Math.Min(buf.Length, p.FinalBytes - done);
                 s.Read(done, buf, 0, n);
                 o.Position = p.NewOffset + done;

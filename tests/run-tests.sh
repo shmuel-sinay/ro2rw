@@ -44,6 +44,7 @@ done
 head -c 5000000 /dev/urandom > odm.raw
 $T mksuper super.raw 260 system=ztail.erofs vendor=lz4hc.erofs product=e1.img odm=odm.raw >/dev/null
 img2simg super.raw super.sparse.img
+mkdir -p ex_orig && python3 "$ROOT/tests/lpcheck.py" super.raw ex_orig > lp_orig.txt
 rm -rf outd ex; mkdir -p outd ex
 $T super super.sparse.img outd sparse >/dev/null
 simg2img outd/super_rw.img outd/back.raw
@@ -133,5 +134,42 @@ $T flash "$PWD/fl/ed" "$PWD/fl/gpt.bin" >/dev/null
 M="$W/tools/mtkclient"
 if grep -q "^w boot_a,super,vbmeta_a " "$M/args.txt" && cmp -s "$M/written_super.bin" ../super.raw && cmp -s "$M/written_boot_a.bin" v2gz.img \
    && [ ! -e "$M/written_preloader.bin" ] && [ ! -d fl/ed/_flash_tmp ]; then echo "ok   flash-back"; else echo "FAIL flash-back: $(cat "$M/args.txt")"; fail=1; fi
+# vbmeta modes: 1 = verity only, 2 = verification only
+$T vbmeta2 vbmeta.img vb1.out 1 >/dev/null; $T vbmeta2 vbmeta.img vb2.out 2 >/dev/null
+python3 -c "assert open('vb1.out','rb').read()[123]==1 and open('vb2.out','rb').read()[123]==2" && echo "ok   vbmeta-modes" || { echo "FAIL vbmeta-modes"; fail=1; }
+# LK manual Android version: the lk.img pattern is Android 10+ (02) -> "9" finds nothing, "10" patches
+d9=$($T lk2 lk.img lk9.out 9 | tail -1); d10=$($T lk2 lk.img lk10.out 10 | tail -1)
+[ "$d9" = "delay=0" ] && [ "$d10" = "delay=1" ] && echo "ok   lk-android-version" || { echo "FAIL lk-android-version: $d9 $d10"; fail=1; }
+# generic hex replace with wildcards (?? keeps bytes)
+python3 -c "open('hx.bin','wb').write(bytes.fromhex('00112233AABBCCDD0011223344'))"
+$T hex hx.bin hx.out "0011??33" "FF??EE??" all >/dev/null
+python3 -c "assert open('hx.out','rb').read()==bytes.fromhex('FF11EE33AABBCCDDFF11EE3344')" && echo "ok   hex-replace" || { echo "FAIL hex-replace"; fail=1; }
+# Magisk PATCHVBMETAFLAG + RECOVERYMODE
+$T magisk2 v3gz.img Magisk-test.apk v3m.img >/dev/null && python3 "$ROOT/tests/checkboot.py" v3m.img >/dev/null
+python3 - <<'PY' && grep -q "RECOVERYMODE=true" x/.backup/.magisk && echo "ok   magisk-options" || { echo "FAIL magisk-options"; fail=1; }
+import struct
+d=open('v3m.img','rb').read()
+off=struct.unpack('>Q', d[len(d)-64+20:len(d)-64+28])[0]
+assert d[off:off+4]==b'AVB0' and d[off+123]&3==3
+PY
 cd ..
+# per-partition plan (SuperPlan): system +20MB converted, vendor copied as-is, product +5MB
+mkdir -p plan
+cp super.sparse.img plan/super.img
+printf 'system_a=convert,20\nvendor_a=copy,0\nproduct_a=convert,5\n' > plan/super.img.ro2rw-plan.txt
+$T project "$PWD/plan" mg/Magisk-test.apk >/dev/null
+simg2img "plan/ערוך/super.img" plan/out.raw; mkdir -p plan/ex
+python3 "$ROOT/tests/lpcheck.py" plan/out.raw plan/ex > plan/lp.txt
+python3 - <<'PY' && echo "ok   super-plan" || { echo "FAIL super-plan"; cat plan/lp.txt; fail=1; }
+import re
+t=open('plan/lp.txt').read()
+size={m.group(1):int(m.group(2)) for m in re.finditer(r'(\w+)\s+attr=\d+ group=\d+ size=(\d+)', t)}
+orig={m.group(1):int(m.group(2)) for m in re.finditer(r'(\w+)\s+attr=\d+ group=\d+ size=(\d+)', open('lp_orig.txt').read())}
+assert size['vendor_a']==orig['vendor_a'], ('vendor changed', size, orig)
+assert open('plan/ex/vendor_a.img','rb').read()==open('ex_orig/vendor_a.img','rb').read()
+import subprocess
+fs=subprocess.run(['dumpe2fs','-h','plan/ex/system_a.img'],capture_output=True,text=True).stdout
+free=int(re.search(r'Free blocks:\s+(\d+)',fs).group(1))*4096
+assert 19<<20 <= free <= 23<<20, free
+PY
 exit $fail

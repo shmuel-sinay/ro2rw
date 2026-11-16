@@ -17,13 +17,26 @@ namespace Ro2rwPc
         public static bool IsVbmeta(byte[] b) { return b.Length >= 256 && b[0] == 'A' && b[1] == 'V' && b[2] == 'B' && b[3] == '0'; }
 
         /// <returns>true if it was active and is now disabled, false if it was already disabled.</returns>
-        public static bool Patch(byte[] b, Action<string> log)
+        public static bool Patch(byte[] b, Action<string> log) { return Patch(b, 3, log); }
+
+        /// <param name="flags">1 = disable verity (hashtree), 2 = disable verification, 3 = both.</param>
+        public static bool Patch(byte[] b, int flags, Action<string> log)
         {
             if (!IsVbmeta(b)) throw new InvalidDataException("קובץ vbmeta לא חוקי (חסר AVB0)");
-            bool active = (b[123] & 3) != 3;
-            b[123] |= 3;   // flags (big endian u32 @120): HASHTREE_DISABLED | VERIFICATION_DISABLED
-            log(active ? "  AVB היה פעיל - כובה (verity + verification)" : "  AVB כבר היה כבוי");
-            return active;
+            flags &= 3;
+            if (flags == 0) flags = 3;
+            int before = b[123] & 3;
+            b[123] |= (byte)flags;   // flags (big endian u32 @120): 1 HASHTREE_DISABLED | 2 VERIFICATION_DISABLED
+            log("  דגלי AVB: " + Describe(before) + " → " + Describe(b[123] & 3));
+            return before != (b[123] & 3);
+        }
+
+        public static string Describe(int f)
+        {
+            if ((f & 3) == 3) return "verity כבוי + verification כבוי";
+            if ((f & 3) == 1) return "verity כבוי, verification פעיל";
+            if ((f & 3) == 2) return "verification כבוי, verity פעיל";
+            return "פעיל (verity + verification)";
         }
     }
 
@@ -37,7 +50,10 @@ namespace Ro2rwPc
         static readonly byte[] Suffix = { 0x7B, 0x44, 0x1B, 0x68, 0x1B, 0x68 };
         static readonly string[] TextKeys = { "orange state", "has been unlocked", "be trusted", "will boot in", "boot in 5", "power off in", "verify fail" };
 
-        public static Result Patch(byte[] b, bool removeDelay, bool removeText, Action<string> log)
+        public static Result Patch(byte[] b, bool removeDelay, bool removeText, Action<string> log) { return Patch(b, removeDelay, removeText, 0, log); }
+
+        /// <param name="android">0 = auto (both patterns), 9 = Android 9 and below (01), 10 = Android 10+ (02).</param>
+        public static Result Patch(byte[] b, bool removeDelay, bool removeText, int android, Action<string> log)
         {
             var res = new Result();
             if (removeDelay)
@@ -48,6 +64,7 @@ namespace Ro2rwPc
                     bool ok = true;
                     for (int k = 0; k < Suffix.Length; k++) if (b[i + 4 + k] != Suffix[k]) { ok = false; break; }
                     if (!ok || (b[i + 10] != 0x01 && b[i + 10] != 0x02) || b[i + 11] != 0x2B) continue;
+                    if ((android == 9 && b[i + 10] != 0x01) || (android == 10 && b[i + 10] != 0x02)) continue;
                     res.AndroidHint = b[i + 10] == 0x02 ? "אנדרואיד 10 ומעלה" : "אנדרואיד 9 ומטה";
                     log(string.Format("  נמצא קוד ההשהיה ב-0x{0:X} ({1})", i, res.AndroidHint));
                     b[i + 2] = 0x00; b[i + 3] = 0x20; b[i + 4] = 0x08; b[i + 5] = 0xBD;
@@ -94,6 +111,8 @@ namespace Ro2rwPc
     public sealed class MagiskOptions
     {
         public bool KeepVerity, KeepForceEncrypt;
+        public bool RecoveryMode;      // RECOVERYMODE: devices whose boot has no ramdisk for Android (Magisk in recovery)
+        public bool PatchVbmetaFlag;   // PATCHVBMETAFLAG: disable verification in the boot image's own AVB footer vbmeta
         public string Abi = "auto";   // auto / arm64-v8a / armeabi-v7a / x86_64 / x86
     }
 
@@ -206,7 +225,7 @@ namespace Ro2rwPc
                 var cfg = new StringBuilder();
                 cfg.Append("KEEPVERITY=" + (opt.KeepVerity ? "true" : "false") + "\n");
                 cfg.Append("KEEPFORCEENCRYPT=" + (opt.KeepForceEncrypt ? "true" : "false") + "\n");
-                cfg.Append("RECOVERYMODE=false\n");
+                cfg.Append("RECOVERYMODE=" + (opt.RecoveryMode ? "true" : "false") + "\n");
                 if (script.Contains("VENDORBOOT")) cfg.Append("VENDORBOOT=false\n");
                 cfg.Append("SHA1=" + sha1 + "\n");
 
@@ -234,6 +253,7 @@ namespace Ro2rwPc
                 var newRd = Compress.CompressAs(cpio.Dump(), fmt);
                 log("  ramdisk חדש: " + Converter.Human(newRd.Length));
                 var outImg = bi.Repack(newRd);
+                if (opt.PatchVbmetaFlag) PatchFooterVbmeta(outImg, log);
                 return outImg;
             }
         }
@@ -283,6 +303,18 @@ namespace Ro2rwPc
             why = "לא זוהה - ברירת מחדל. אם המערכת 32 ביט בחר armeabi-v7a ידנית";
             return "arm64-v8a";
         }
+
+        /// <summary>PATCHVBMETAFLAG: sets the flags of the vbmeta blob referenced by the AVB footer.</summary>
+        public static void PatchFooterVbmeta(byte[] img, Action<string> log)
+        {
+            if (img.Length < 64 || Encoding.ASCII.GetString(img, img.Length - 64, 4) != "AVBf") { log("  ! אין AVB footer ב-boot - PATCHVBMETAFLAG דולג"); return; }
+            long off = 0; for (int i = 0; i < 8; i++) off = (off << 8) | img[img.Length - 64 + 20 + i];
+            if (off < 0 || off + 128 > img.Length || !VbmetaPatcher.IsVbmeta(Slice(img, off, 256))) { log("  ! vbmeta ב-footer לא נמצא"); return; }
+            img[off + 123] |= 3;
+            log("  PATCHVBMETAFLAG: האימות ב-vbmeta הפנימי של ה-boot כובה");
+        }
+
+        static byte[] Slice(byte[] b, long o, int n) { var r = new byte[Math.Min(n, b.Length - o)]; Buffer.BlockCopy(b, (int)o, r, 0, r.Length); return r; }
 
         static readonly string[] VerityPat = { "verifyatboot", "verify", "avb_keys", "avb", "support_scfs", "fsverity" };
         static readonly string[] EncPat = { "forceencrypt", "forcefdeorfbe", "fileencryption" };
@@ -358,6 +390,54 @@ namespace Ro2rwPc
             }
             if (rm.Length > 0) backups[".backup/.rmlist"] = new Cpio.Entry { Mode = Cpio.S_IFREG, Data = Encoding.UTF8.GetBytes(rm.ToString()) };
             foreach (var kv in backups) cur.Entries[kv.Key] = kv.Value;
+        }
+    }
+
+    // ======================================================================= generic HEX find/replace
+    /// <summary>Hex find/replace with wildcards ("??" in the pattern matches any byte; "??" in the replacement keeps the byte).</summary>
+    public static class HexPatcher
+    {
+        public static int[] Parse(string hex)
+        {
+            hex = Regex.Replace(hex ?? "", @"[\s,-]", "").ToUpperInvariant();
+            if (hex.Length == 0 || hex.Length % 2 != 0) throw new FormatException("מחרוזת HEX חייבת להכיל מספר זוגי של תווים (למשל 08B5??207B44)");
+            var r = new int[hex.Length / 2];
+            for (int i = 0; i < r.Length; i++)
+            {
+                string h = hex.Substring(i * 2, 2);
+                if (h == "??" || h == "**") r[i] = -1;
+                else r[i] = Convert.ToInt32(h, 16);
+            }
+            return r;
+        }
+
+        public static List<long> Find(byte[] b, int[] pat, int max = int.MaxValue)
+        {
+            var res = new List<long>();
+            int first = Array.FindIndex(pat, x => x >= 0);
+            for (int i = 0; i + pat.Length <= b.Length && res.Count < max; i++)
+            {
+                if (first >= 0 && b[i + first] != pat[first]) continue;
+                bool ok = true;
+                for (int k = 0; k < pat.Length; k++) if (pat[k] >= 0 && b[i + k] != pat[k]) { ok = false; break; }
+                if (ok) res.Add(i);
+            }
+            return res;
+        }
+
+        /// <returns>number of replacements.</returns>
+        public static int Replace(byte[] b, string find, string replace, bool all, Action<string> log)
+        {
+            var f = Parse(find); var r = Parse(replace);
+            if (r.Length != f.Length) throw new FormatException("החיפוש וההחלפה חייבים להיות באותו אורך (" + f.Length + " בתים מול " + r.Length + ")");
+            var hits = Find(b, f, all ? int.MaxValue : 1);
+            foreach (var at in hits)
+            {
+                for (int k = 0; k < r.Length; k++) if (r[k] >= 0) b[at + k] = (byte)r[k];
+                log(string.Format("  הוחלף ב-0x{0:X}", at));
+            }
+            if (hits.Count == 0) log("  לא נמצאה התאמה");
+            return hits.Count;
         }
     }
 }

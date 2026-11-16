@@ -67,7 +67,7 @@ namespace Ro2rwPc
             if (it.PartSize > 0 && real > it.PartSize) it.Problem = "הקובץ גדול מהמחיצה (" + Converter.Human(real) + " > " + Converter.Human(it.PartSize) + ")";
         }
 
-        static string Unsparse(string path, string tmpDir, Action<int> prog)
+        string Unsparse(string path, string tmpDir, Action<int> prog)
         {
             Directory.CreateDirectory(tmpDir);
             string outp = Path.Combine(tmpDir, Path.GetFileNameWithoutExtension(path) + ".raw.img");
@@ -77,6 +77,7 @@ namespace Ro2rwPc
                 var buf = new byte[4 << 20];
                 for (long pos = 0; pos < s.Length; pos += buf.Length)
                 {
+                    if (Cancelled()) throw new OperationCanceledException();
                     int n = (int)Math.Min(buf.Length, s.Length - pos);
                     s.Read(pos, buf, 0, n);
                     o.Write(buf, 0, n);

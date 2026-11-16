@@ -134,6 +134,35 @@ static class TestMain
                         new Flasher { Log = Console.WriteLine }.Flash(items, a[1], false);
                         return 0;
                     }
+                case "vbmeta2":
+                    {
+                        var b = File.ReadAllBytes(a[1]);
+                        VbmetaPatcher.Patch(b, int.Parse(a[3]), Console.WriteLine);
+                        File.WriteAllBytes(a[2], b);
+                        return 0;
+                    }
+                case "lk2":
+                    {
+                        var b = File.ReadAllBytes(a[1]);
+                        var r = LkPatcher.Patch(b, true, false, int.Parse(a[3]), Console.WriteLine);
+                        File.WriteAllBytes(a[2], b);
+                        Console.WriteLine("delay=" + r.DelayPatched);
+                        return 0;
+                    }
+                case "hex":
+                    {
+                        var b = File.ReadAllBytes(a[1]);
+                        int n = HexPatcher.Replace(b, a[3], a[4], a.Length > 5 && a[5] == "all", Console.WriteLine);
+                        File.WriteAllBytes(a[2], b);
+                        Console.WriteLine("n=" + n);
+                        return 0;
+                    }
+                case "magisk2":
+                    {
+                        var outb = MagiskPatcher.Patch(File.ReadAllBytes(a[1]), a[2], new MagiskOptions { PatchVbmetaFlag = true, RecoveryMode = true }, Console.WriteLine);
+                        File.WriteAllBytes(a[3], outb);
+                        return 0;
+                    }
                 case "ls":
                     using (var src = new RawFileSource(a[1]))
                     {

@@ -552,6 +552,7 @@ namespace Ro2rwPc
                 o.Position = baseOff + runs[0][0] * B;
                 reader.ReadData(ino, (buf, off, cnt) =>
                 {
+                    if (cancelled != null && cancelled()) throw new OperationCanceledException();
                     while (cnt > 0)
                     {
                         if (got >= sz) throw new InvalidDataException("file larger than expected");
