@@ -63,19 +63,19 @@ jobs:
           body: |
             ## RO2RW PC ${{ steps.ver.outputs.tag }}
 
-            ממיר את מחיצות super.img של אנדרואיד מקריאה בלבד (EROFS או ext4) ל-ext4 לקריאה וכתיבה, על המחשב בלבד.
+            ערכת כלים לווינדוס לעריכת רום של אנדרואיד, על המחשב בלבד.
 
             ### הורדה והפעלה
-            1. הורידו את **RO2RW-PC.exe** מהקבצים למטה.
+            1. הורידו את **RO2RW-PC.exe** מהקבצים למטה ושימו אותו בתיקייה משלו.
             2. הפעילו בלחיצה כפולה (Windows 10/11, בלי התקנה). אם מופיעה אזהרת SmartScreen: "מידע נוסף" ואז "הפעל בכל זאת".
-            3. בחרו super.img, סמנו מחיצות, בחרו הגדלה (MAX או FIXED) ולחצו "התחל המרה".
-            4. הפלט נשמר בתיקייה RO2RW_output שליד הקובץ, יחד עם הוראות צריבה.
+            3. "פרויקט חדש": נותנים שם, בדרך כלל שם המכשיר.
+            4. "הוסף קבצים" (או גרירה): super, boot / init_boot, vbmeta, lk.
+            5. "בצע עריכה": הקבצים הערוכים נשמרים בתיקייה **ערוך** בתוך הפרויקט, עם אותם שמות.
 
-            ### נתמך
-            - קלט: super raw, sparse ומפוצל (super.img.0, super.img.1 ...)
-            - EROFS: ללא דחיסה, LZ4/LZ4HC, DEFLATE, ztailpacking, fragments, dedupe
-            - ext4: כולל shared_blocks, 64bit, metadata_csum, inline_data
-            - נשמרים: הרשאות, SELinux, capabilities, קישורים
-            - לא נתמך עדיין: EROFS עם LZMA או ZSTD
+            ### כלים
+            - **RO2RW**: super.img ל-ext4 לקריאה וכתיבה (raw, sparse ומפוצל; EROFS ו-ext4)
+            - **Root עם Magisk**: עריכת boot או init_boot על המחשב, כמו אפליקציית Magisk (ה-APK הרשמי יורד אוטומטית)
+            - **ביטול AVB**: vbmeta עם verity ו-verification כבויים
+            - **הסרת Orange State**: lk בלי ההשהיה של 5 שניות ובלי טקסט האזהרה
 
             ⚠️ גבו את המכשיר לפני הצריבה. האחריות על המשתמש.
