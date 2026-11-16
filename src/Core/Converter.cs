@@ -281,10 +281,12 @@ namespace Ro2rwPc
         }
 
         // ------------------------------------------------------------ write
-        public string Write(Settings st, string outDir)
+        public string Write(Settings st, string outDir, string outName = "super_rw.img")
         {
-            string rawPath = Path.Combine(outDir, st.SparseOutput ? "super_rw.raw.tmp" : "super_rw.img");
-            string finalPath = Path.Combine(outDir, "super_rw.img");
+            string finalPath = Path.Combine(outDir, outName);
+            string rawPath = st.SparseOutput ? finalPath + ".raw.tmp" : finalPath;
+            if (Path.GetFullPath(finalPath).Equals(Path.GetFullPath(InputPath), StringComparison.OrdinalIgnoreCase))
+                throw new IOException("קובץ הפלט זהה לקובץ הקלט");
             if (File.Exists(rawPath)) File.Delete(rawPath);
 
             // new metadata

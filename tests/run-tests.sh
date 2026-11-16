@@ -4,7 +4,7 @@ set -e
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 W=${1:-$(mktemp -d)}
 mkdir -p "$W"
-mcs -nologo -out:"$W/t.exe" "$ROOT"/src/Core/*.cs "$ROOT/tests/TestMain.cs"
+mcs -nologo -r:System.IO.Compression -r:System.IO.Compression.FileSystem -out:"$W/t.exe" "$ROOT"/src/Core/*.cs "$ROOT/tests/TestMain.cs"
 T="mono $W/t.exe"
 V="$ROOT/tests/verify.sh"
 cd "$W"; rm -rf src; mkdir -p src/etc src/bin src/app/deep/dir src/big src/many
@@ -52,4 +52,43 @@ for p in system_a product_a; do check ex/$p.img "super-$p"; done
 EXCL="fstab*" check ex/vendor_a.img "super-vendor_a"
 cmp -n 5000000 ex/odm_a.img odm.raw >/dev/null && echo "ok   super-copy-raw" || { echo "FAIL super-copy-raw"; fail=1; }
 debugfs -R "cat /etc/fstab.qcom" ex/vendor_a.img 2>/dev/null | grep -q "/vendor ext4" && echo "ok   fstab-patch" || { echo "FAIL fstab-patch"; fail=1; }
+# ---- Magisk / LK / vbmeta
+mkdir -p mg && cd mg
+mkdir -p apk/lib/arm64-v8a apk/assets
+head -c 300000 /dev/urandom > apk/lib/arm64-v8a/libmagiskinit.so
+head -c 900000 /dev/urandom > apk/lib/arm64-v8a/libmagisk.so
+head -c 50000 /dev/urandom > apk/lib/arm64-v8a/libinit-ld.so
+printf 'add 0644 overlay.d/sbin/magisk.xz magisk.xz\nadd 0644 overlay.d/sbin/init-ld.xz\necho VENDORBOOT\n' > apk/assets/boot_patch.sh
+(cd apk && python3 -c "
+import zipfile,os
+z=zipfile.ZipFile('../Magisk-test.apk','w',zipfile.ZIP_DEFLATED)
+for r,_,fs in os.walk('.'):
+  for f in fs: z.write(os.path.join(r,f), os.path.relpath(os.path.join(r,f),'.'))
+z.close()")
+for spec in "v2gz:2 gzip mtk avb" "v4lz4:4 lz4" "v0raw:0 raw" "v1lz4mtk:1 lz4 mtk" "v3gz:3 gzip avb"; do
+  n=${spec%%:*}; args=${spec#*:}
+  python3 "$ROOT/tests/mkboot.py" $n.img $args
+  if $T magisk $n.img Magisk-test.apk $n.p.img >/dev/null && python3 "$ROOT/tests/checkboot.py" $n.p.img >/dev/null \
+     && cmp -s <(xz -dc x/overlay.d/sbin/magisk.xz) apk/lib/arm64-v8a/libmagisk.so \
+     && cmp -s x/init apk/lib/arm64-v8a/libmagiskinit.so \
+     && xz -dc x/.backup/init.xz | grep -q ORIGINAL-INIT \
+     && grep -q "KEEPVERITY=false" x/.backup/.magisk \
+     && ! grep -q "verify\|avb=\|forceencrypt" x/fstab.mt6765 && [ ! -e x/verity_key ]; then
+    echo "ok   magisk-$n"
+  else echo "FAIL magisk-$n"; fail=1; fi
+done
+python3 -c "
+import os,struct
+d=bytearray(struct.pack('<II',0x58881688,0)+os.urandom(5000))
+d+=bytes.fromhex('08B5AB127B441B681B68022B')+os.urandom(3000)
+d+=b'Orange State\x00\x00Your device has been unlocked and can\'t be trusted\x00Your device will boot in 5 seconds\x00OTHER STRING KEPT\x00'
+open('lk.img','wb').write(d)
+open('vbmeta.img','wb').write(b'AVB0'+bytes(2000))"
+$T lk lk.img lk.out >/dev/null
+python3 -c "
+d=open('lk.out','rb').read()
+assert d.find(bytes.fromhex('08B5002008BD1B681B68022B'))>0 and b'Orange' not in d and b'OTHER STRING KEPT' in d" && echo "ok   lk-patch" || { echo "FAIL lk-patch"; fail=1; }
+$T vbmeta vbmeta.img vb.out >/dev/null
+python3 -c "assert open('vb.out','rb').read()[123]==3" && echo "ok   vbmeta-patch" || { echo "FAIL vbmeta-patch"; fail=1; }
+cd ..
 exit $fail

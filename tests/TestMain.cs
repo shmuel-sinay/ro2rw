@@ -68,6 +68,41 @@ static class TestMain
                         }
                         return 0;
                     }
+                case "magisk":
+                    {
+                        var outb = MagiskPatcher.Patch(File.ReadAllBytes(a[1]), a[2], new MagiskOptions(), Console.WriteLine);
+                        File.WriteAllBytes(a[3], outb);
+                        return 0;
+                    }
+                case "lk":
+                    {
+                        var b = File.ReadAllBytes(a[1]);
+                        var r = LkPatcher.Patch(b, true, true, Console.WriteLine);
+                        File.WriteAllBytes(a[2], b);
+                        Console.WriteLine("delay=" + r.DelayPatched + " text=" + r.TextsCleared);
+                        return 0;
+                    }
+                case "vbmeta":
+                    {
+                        var b = File.ReadAllBytes(a[1]);
+                        VbmetaPatcher.Patch(b, Console.WriteLine);
+                        File.WriteAllBytes(a[2], b);
+                        return 0;
+                    }
+                case "project":
+                    {
+                        // project <dir> <magisk.apk>
+                        var proj = new Project { Name = Path.GetFileName(a[1]), Root = a[1] };
+                        Directory.CreateDirectory(proj.Edited);
+                        Directory.CreateDirectory(Project.ToolsDir);
+                        File.Copy(a[2], Path.Combine(Project.ToolsDir, "Magisk-test.apk"), true);
+                        var files = proj.Scan();
+                        foreach (var f in files) Console.WriteLine(f.Name + " | " + f.Kind + " | " + f.Action);
+                        var ed = new Editor { Log = Console.WriteLine };
+                        int ok = ed.Run(proj, files, new EditSettings { Ro2rw = new Settings { SparseOutput = true } });
+                        Console.WriteLine("ok=" + ok + "/" + files.Count);
+                        return ok == files.Count ? 0 : 1;
+                    }
                 case "ls":
                     using (var src = new RawFileSource(a[1]))
                     {

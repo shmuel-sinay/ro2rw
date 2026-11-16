@@ -16,7 +16,7 @@ jobs:
       - name: Install tools
         run: |
           sudo apt-get update -q
-          sudo apt-get install -y -q mono-mcs erofs-utils e2fsprogs android-sdk-libsparse-utils attr
+          sudo apt-get install -y -q mono-mcs erofs-utils e2fsprogs android-sdk-libsparse-utils attr lz4 xz-utils cpio
       - name: Run core tests
         run: sudo bash tests/run-tests.sh "$RUNNER_TEMP/t"
 

@@ -15,110 +15,161 @@ namespace Ro2rwPc
         readonly Font fBold = new Font("Segoe UI", 10f, FontStyle.Bold);
         readonly Font fTitle = new Font("Segoe UI", 15f, FontStyle.Bold);
 
-        Label lblFile, lblSuperInfo, lblTotal;
-        Button btnPick, btnStart, btnCancel, btnOpenOut;
-        ListView lvParts;
+        ComboBox cmbProject;
+        Button btnNewProj, btnOpenDir, btnAddFiles, btnRefresh, btnRun, btnCancel, btnOpenEdited;
+        ListView lvFiles;
+        Label lblProj;
+        // RO2RW
         RadioButton rbMax, rbFixed;
         NumericUpDown nS, nV, nP, nSE, nOT, nFixed;
-        CheckBox cbSparse, cbFstab, cbVbmeta;
+        CheckBox cbSparse, cbFstab;
+        Label lblTotal;
+        // Magisk
+        CheckBox cbKeepVerity, cbKeepEnc;
+        ComboBox cmbAbi;
+        Label lblMagisk;
+        // LK
+        CheckBox cbLkDelay, cbLkText;
         ProgressBar prog;
         RichTextBox log;
 
-        string superPath;
-        string outDir;
+        Project project;
+        List<ProjectFile> files = new List<ProjectFile>();
         Thread worker;
         volatile bool cancel;
-        Dictionary<string, PartInfo> lastParts = new Dictionary<string, PartInfo>();
 
         public MainForm()
         {
-            Text = "RO2RW PC " + Program.Version + " - המרת super.img לקריאה וכתיבה";
+            Text = "RO2RW PC " + Program.Version + " - ערכת כלים לעריכת רום";
             Font = fBase;
             RightToLeft = RightToLeft.Yes;
             RightToLeftLayout = true;
             AutoScaleMode = AutoScaleMode.Dpi;
-            ClientSize = new Size(940, 760);
-            MinimumSize = new Size(900, 700);
+            ClientSize = new Size(1000, 800);
+            MinimumSize = new Size(960, 760);
             StartPosition = FormStartPosition.CenterScreen;
             AllowDrop = true;
             DragEnter += (s, e) => { if (e.Data.GetDataPresent(DataFormats.FileDrop)) e.Effect = DragDropEffects.Copy; };
-            DragDrop += (s, e) => { var f = (string[])e.Data.GetData(DataFormats.FileDrop); if (f != null && f.Length > 0) LoadSuper(f[0]); };
+            DragDrop += (s, e) => { var f = (string[])e.Data.GetData(DataFormats.FileDrop); if (f != null) AddFiles(f); };
             try { Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
             Build();
-            Log("ברוך הבא. בחר קובץ super.img (או גרור אותו לחלון), בדוק את ההגדרות ולחץ \"התחל המרה\".", Color.LightGreen);
-            Log("התוכנה עובדת על המחשב בלבד - בלי טלפון ובלי ADB. בסוף תקבל super חדש לצריבה.", Color.LightGreen);
+            LoadProjects(null);
+            Log("ברוך הבא! צור פרויקט (שם המכשיר), הוסף אליו את קבצי הרום, סמן מה לערוך ולחץ \"בצע עריכה\".", Color.LightGreen);
+            Log("הקבצים הערוכים נשמרים בתיקייה \"ערוך\" שבתוך הפרויקט, עם אותם שמות. המקור לא משתנה.", Color.LightGreen);
         }
 
         // ------------------------------------------------------------ UI
         void Build()
         {
-            var title = new Label { Text = "RO2RW למחשב", Font = fTitle, AutoSize = true, Location = new Point(14, 10) };
-            var sub = new Label { Text = "ממיר את מחיצות super (EROFS / ext4 לקריאה בלבד) ל-ext4 לקריאה וכתיבה, עם מקום פנוי", AutoSize = true, Location = new Point(16, 44), ForeColor = Color.DimGray };
-            Controls.Add(title); Controls.Add(sub);
+            Controls.Add(new Label { Text = "RO2RW PC", Font = fTitle, AutoSize = true, Location = new Point(14, 8) });
+            Controls.Add(new Label { Text = "RO2RW, Root עם Magisk, ביטול AVB והסרת Orange State - הכול על המחשב", AutoSize = true, Location = new Point(16, 42), ForeColor = Color.DimGray });
 
-            // step 1
-            var g1 = new GroupBox { Text = "1. קובץ super", Location = new Point(12, 72), Size = new Size(916, 92) };
-            btnPick = new Button { Text = "בחר super.img...", Location = new Point(14, 26), Size = new Size(170, 34), Font = fBold };
-            btnPick.Click += (s, e) => PickFile();
-            lblFile = new Label { Text = "לא נבחר קובץ. אפשר גם לגרור את הקובץ לחלון.", Location = new Point(196, 33), Size = new Size(700, 24), AutoEllipsis = true };
-            lblSuperInfo = new Label { Text = "", Location = new Point(14, 64), Size = new Size(880, 22), ForeColor = Color.DarkGreen };
-            g1.Controls.AddRange(new Control[] { btnPick, lblFile, lblSuperInfo });
-            Controls.Add(g1);
+            // project bar
+            var gp = new GroupBox { Text = "פרויקט (מכשיר)", Location = new Point(12, 68), Size = new Size(976, 66) };
+            cmbProject = new ComboBox { Location = new Point(14, 26), Size = new Size(250, 28), DropDownStyle = ComboBoxStyle.DropDownList };
+            cmbProject.SelectedIndexChanged += (s, e) => { if (cmbProject.SelectedItem != null) OpenProject((string)cmbProject.SelectedItem); };
+            btnNewProj = new Button { Text = "פרויקט חדש...", Location = new Point(274, 24), Size = new Size(130, 32) };
+            btnNewProj.Click += (s, e) => NewProject();
+            btnOpenDir = new Button { Text = "פתח תיקייה", Location = new Point(412, 24), Size = new Size(110, 32) };
+            btnOpenDir.Click += (s, e) => { if (project != null) Process.Start("explorer.exe", "\"" + project.Root + "\""); };
+            btnOpenEdited = new Button { Text = "פתח \"ערוך\"", Location = new Point(530, 24), Size = new Size(110, 32) };
+            btnOpenEdited.Click += (s, e) => { if (project != null) Process.Start("explorer.exe", "\"" + project.Edited + "\""); };
+            lblProj = new Label { Location = new Point(650, 30), Size = new Size(316, 24), ForeColor = Color.DimGray, AutoEllipsis = true };
+            gp.Controls.AddRange(new Control[] { cmbProject, btnNewProj, btnOpenDir, btnOpenEdited, lblProj });
+            Controls.Add(gp);
 
-            // step 2
-            var g2 = new GroupBox { Text = "2. מחיצות (סמן את המחיצות להמרה)", Location = new Point(12, 170), Size = new Size(450, 274) };
-            lvParts = new ListView { View = View.Details, CheckBoxes = true, FullRowSelect = true, Location = new Point(10, 24), Size = new Size(430, 240), RightToLeftLayout = true };
-            lvParts.Columns.Add("מחיצה", 130); lvParts.Columns.Add("מערכת קבצים", 110); lvParts.Columns.Add("גודל", 100); lvParts.Columns.Add("קטגוריה", 70);
-            lvParts.ItemCheck += (s, e) =>
+            // files
+            var gf = new GroupBox { Text = "קבצי הרום בפרויקט (סמן מה לערוך)", Location = new Point(12, 140), Size = new Size(560, 330) };
+            lvFiles = new ListView { View = View.Details, CheckBoxes = true, FullRowSelect = true, Location = new Point(10, 24), Size = new Size(540, 256), RightToLeftLayout = true };
+            lvFiles.Columns.Add("קובץ", 150); lvFiles.Columns.Add("סוג", 90); lvFiles.Columns.Add("גודל", 80); lvFiles.Columns.Add("עריכה", 150); lvFiles.Columns.Add("ערוך", 50);
+            lvFiles.ItemCheck += (s, e) =>
             {
-                var pi = lvParts.Items[e.Index].Tag as PartInfo;
-                if (pi == null || (pi.Fs != "EROFS" && pi.Fs != "EXT4")) e.NewValue = CheckState.Unchecked;
+                var pf = lvFiles.Items[e.Index].Tag as ProjectFile;
+                if (pf == null || pf.Action == EditAction.None) e.NewValue = CheckState.Unchecked;
+                else pf.Selected = e.NewValue == CheckState.Checked;
             };
-            g2.Controls.Add(lvParts);
-            Controls.Add(g2);
+            btnAddFiles = new Button { Text = "הוסף קבצים...", Location = new Point(10, 288), Size = new Size(130, 32) };
+            btnAddFiles.Click += (s, e) => PickFiles();
+            btnRefresh = new Button { Text = "רענן", Location = new Point(148, 288), Size = new Size(80, 32) };
+            btnRefresh.Click += (s, e) => RefreshFiles();
+            var hint = new Label { Text = "אפשר גם לגרור קבצים לחלון", Location = new Point(236, 295), Size = new Size(300, 22), ForeColor = Color.DimGray };
+            gf.Controls.AddRange(new Control[] { lvFiles, btnAddFiles, btnRefresh, hint });
+            Controls.Add(gf);
 
-            // step 3
-            var g3 = new GroupBox { Text = "3. הגדלת מחיצות", Location = new Point(472, 170), Size = new Size(456, 274) };
-            rbMax = new RadioButton { Text = "לפי אחוזים מהמקום הפנוי ב-super (MAX)", Location = new Point(14, 24), Size = new Size(420, 24), Checked = true };
-            rbFixed = new RadioButton { Text = "גודל קבוע לכל מחיצה (FIXED)", Location = new Point(14, 136), Size = new Size(420, 24) };
-            int y = 54;
-            nS = Num(g3, "System", 14, y, 70); nV = Num(g3, "Vendor", 100, y, 10); nP = Num(g3, "Product", 186, y, 10); nSE = Num(g3, "System_ext", 272, y, 5); nOT = Num(g3, "אחרות", 358, y, 5);
-            lblTotal = new Label { Location = new Point(14, 108), Size = new Size(420, 22) };
-            var lf = new Label { Text = "MB לכל מחיצה:", Location = new Point(34, 168), Size = new Size(110, 24) };
-            nFixed = new NumericUpDown { Location = new Point(148, 165), Size = new Size(100, 26), Minimum = 0, Maximum = 100000, Value = 200 };
-            cbSparse = new CheckBox { Text = "קובץ פלט sparse (קטן יותר, ל-fastboot)", Location = new Point(14, 200), Size = new Size(430, 22), Checked = true };
-            cbFstab = new CheckBox { Text = "הוסף שורות ext4 ל-fstab של vendor", Location = new Point(14, 222), Size = new Size(430, 22), Checked = true };
-            cbVbmeta = new CheckBox { Text = "צור vbmeta_disabled.img (אם יש vbmeta.img ליד super)", Location = new Point(14, 244), Size = new Size(430, 22), Checked = true };
-            g3.Controls.AddRange(new Control[] { rbMax, rbFixed, lblTotal, lf, nFixed, cbSparse, cbFstab, cbVbmeta });
-            Controls.Add(g3);
-            EventHandler upd = (s, e) => UpdateSizeUi();
-            foreach (var n in new[] { nS, nV, nP, nSE, nOT }) n.ValueChanged += upd;
-            rbMax.CheckedChanged += upd;
-            UpdateSizeUi();
+            // settings tabs
+            var tabs = new TabControl { Location = new Point(582, 140), Size = new Size(406, 330), RightToLeftLayout = true };
+            tabs.TabPages.Add(BuildRo2rwTab());
+            tabs.TabPages.Add(BuildMagiskTab());
+            tabs.TabPages.Add(BuildLkTab());
+            Controls.Add(tabs);
 
             // run
-            btnStart = new Button { Text = "התחל המרה", Location = new Point(12, 454), Size = new Size(200, 44), Font = new Font("Segoe UI", 12f, FontStyle.Bold), BackColor = Color.FromArgb(46, 125, 50), ForeColor = Color.White, Enabled = false };
-            btnStart.FlatStyle = FlatStyle.Flat;
-            btnStart.Click += (s, e) => StartConvert();
-            btnCancel = new Button { Text = "ביטול", Location = new Point(222, 454), Size = new Size(100, 44), Enabled = false };
+            btnRun = new Button { Text = "בצע עריכה", Location = new Point(12, 480), Size = new Size(200, 44), Font = new Font("Segoe UI", 12f, FontStyle.Bold), BackColor = Color.FromArgb(46, 125, 50), ForeColor = Color.White, FlatStyle = FlatStyle.Flat };
+            btnRun.Click += (s, e) => RunEdits();
+            btnCancel = new Button { Text = "ביטול", Location = new Point(222, 480), Size = new Size(100, 44), Enabled = false };
             btnCancel.Click += (s, e) => { cancel = true; Log("מבטל...", Color.Khaki); };
-            btnOpenOut = new Button { Text = "פתח תיקיית פלט", Location = new Point(332, 454), Size = new Size(150, 44), Enabled = false };
-            btnOpenOut.Click += (s, e) => { if (outDir != null && Directory.Exists(outDir)) Process.Start("explorer.exe", "\"" + outDir + "\""); };
-            prog = new ProgressBar { Location = new Point(492, 464), Size = new Size(436, 26), Maximum = 1000 };
-            Controls.AddRange(new Control[] { btnStart, btnCancel, btnOpenOut, prog });
+            prog = new ProgressBar { Location = new Point(334, 490), Size = new Size(654, 26), Maximum = 1000 };
+            Controls.AddRange(new Control[] { btnRun, btnCancel, prog });
 
             log = new RichTextBox
             {
-                Location = new Point(12, 508), Size = new Size(916, 240), ReadOnly = true, BackColor = Color.FromArgb(24, 24, 28), ForeColor = Color.Gainsboro,
+                Location = new Point(12, 534), Size = new Size(976, 254), ReadOnly = true, BackColor = Color.FromArgb(24, 24, 28), ForeColor = Color.Gainsboro,
                 Font = new Font("Consolas", 10f), RightToLeft = RightToLeft.Yes, Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right
             };
             Controls.Add(log);
         }
 
+        TabPage BuildRo2rwTab()
+        {
+            var t = new TabPage("RO2RW (super)");
+            rbMax = new RadioButton { Text = "אחוזים מהמקום הפנוי (MAX)", Location = new Point(10, 10), Size = new Size(370, 24), Checked = true };
+            int y = 38;
+            nS = Num(t, "System", 10, y, 70); nV = Num(t, "Vendor", 84, y, 10); nP = Num(t, "Product", 158, y, 10); nSE = Num(t, "Sys_ext", 232, y, 5); nOT = Num(t, "אחרות", 306, y, 5);
+            lblTotal = new Label { Location = new Point(10, 90), Size = new Size(370, 22) };
+            rbFixed = new RadioButton { Text = "גודל קבוע לכל מחיצה (FIXED), MB:", Location = new Point(10, 118), Size = new Size(260, 24) };
+            nFixed = new NumericUpDown { Location = new Point(276, 117), Size = new Size(90, 26), Maximum = 100000, Value = 200 };
+            cbSparse = new CheckBox { Text = "פלט sparse (קטן יותר)", Location = new Point(10, 154), Size = new Size(370, 24), Checked = true };
+            cbFstab = new CheckBox { Text = "הוסף שורות ext4 ל-fstab של vendor", Location = new Point(10, 180), Size = new Size(370, 24), Checked = true };
+            t.Controls.AddRange(new Control[] { rbMax, lblTotal, rbFixed, nFixed, cbSparse, cbFstab });
+            EventHandler upd = (s, e) => UpdateSizeUi();
+            foreach (var n in new[] { nS, nV, nP, nSE, nOT }) n.ValueChanged += upd;
+            rbMax.CheckedChanged += upd;
+            UpdateSizeUi();
+            return t;
+        }
+
+        TabPage BuildMagiskTab()
+        {
+            var t = new TabPage("Magisk");
+            t.Controls.Add(new Label { Text = "ABI של המכשיר:", Location = new Point(10, 14), Size = new Size(110, 24) });
+            cmbAbi = new ComboBox { Location = new Point(124, 10), Size = new Size(150, 28), DropDownStyle = ComboBoxStyle.DropDownList };
+            cmbAbi.Items.AddRange(new object[] { "auto", "arm64-v8a", "armeabi-v7a", "x86_64", "x86" });
+            cmbAbi.SelectedIndex = 0;
+            cbKeepVerity = new CheckBox { Text = "השאר verity (KEEPVERITY)", Location = new Point(10, 48), Size = new Size(370, 24) };
+            cbKeepEnc = new CheckBox { Text = "השאר הצפנה כפויה (KEEPFORCEENCRYPT)", Location = new Point(10, 74), Size = new Size(370, 24) };
+            lblMagisk = new Label { Location = new Point(10, 108), Size = new Size(376, 150), ForeColor = Color.DimGray };
+            var btnApk = new Button { Text = "בחר Magisk.apk אחר...", Location = new Point(10, 262), Size = new Size(180, 30) };
+            btnApk.Click += (s, e) => PickMagiskApk();
+            t.Controls.AddRange(new Control[] { cmbAbi, cbKeepVerity, cbKeepEnc, lblMagisk, btnApk });
+            UpdateMagiskLabel();
+            return t;
+        }
+
+        TabPage BuildLkTab()
+        {
+            var t = new TabPage("LK / vbmeta");
+            cbLkDelay = new CheckBox { Text = "בטל את ההשהיה של 5 שניות (Orange State)", Location = new Point(10, 12), Size = new Size(380, 24), Checked = true };
+            cbLkText = new CheckBox { Text = "מחק את טקסט האזהרה מהמסך", Location = new Point(10, 40), Size = new Size(380, 24), Checked = true };
+            var l1 = new Label { Text = "גרסת האנדרואיד מזוהה אוטומטית (01/02), אין צורך לבחור.\nמבוסס על המדריך של hovatek ועל hex-replacer.", Location = new Point(10, 70), Size = new Size(380, 44), ForeColor = Color.DimGray };
+            var l2 = new Label { Text = "vbmeta: מכבה verity ו-verification (דגלים = 3), לפי AVB-Disabler. מתאים לצריבה ב-SP Flash Tool או mtkclient.", Location = new Point(10, 130), Size = new Size(380, 64), ForeColor = Color.DimGray };
+            t.Controls.AddRange(new Control[] { cbLkDelay, cbLkText, l1, l2 });
+            return t;
+        }
+
         NumericUpDown Num(Control parent, string label, int x, int y, int val)
         {
-            parent.Controls.Add(new Label { Text = label + " %", Location = new Point(x, y), Size = new Size(84, 20) });
-            var n = new NumericUpDown { Location = new Point(x, y + 22), Size = new Size(70, 26), Minimum = 0, Maximum = 100, Value = val };
+            parent.Controls.Add(new Label { Text = label + " %", Location = new Point(x, y), Size = new Size(72, 20) });
+            var n = new NumericUpDown { Location = new Point(x, y + 22), Size = new Size(64, 26), Maximum = 100, Value = val };
             parent.Controls.Add(n);
             return n;
         }
@@ -131,14 +182,38 @@ namespace Ro2rwPc
             int sum = (int)(nS.Value + nV.Value + nP.Value + nSE.Value + nOT.Value);
             lblTotal.Text = "סה\"כ: " + sum + "%" + (sum > 100 ? "  - יותר מ-100%!" : "");
             lblTotal.ForeColor = sum > 100 ? Color.Firebrick : Color.Black;
-            lblTotal.Enabled = max;
         }
 
+        void UpdateMagiskLabel()
+        {
+            string apk = null;
+            try { if (Directory.Exists(Project.ToolsDir)) apk = Directory.GetFiles(Project.ToolsDir, "*.apk").FirstOrDefault(f => Path.GetFileName(f).ToLowerInvariant().Contains("magisk")); } catch { }
+            lblMagisk.Text = (apk != null ? "Magisk: " + Path.GetFileName(apk) : "Magisk: יורד אוטומטית מ-GitHub בפעם הראשונה") +
+                "\n\nה-boot או ה-init_boot נערכים על המחשב, כמו שאפליקציית Magisk עושה." +
+                "\nאחרי הצריבה מתקינים את אפליקציית Magisk בטלפון." +
+                "\n\nאם המכשיר 64 ביט עם מערכת 32 ביט, בחר armeabi-v7a.";
+        }
+
+        void PickMagiskApk()
+        {
+            using (var d = new OpenFileDialog { Filter = "Magisk APK|*.apk", Title = "בחר Magisk.apk" })
+            {
+                if (d.ShowDialog(this) != DialogResult.OK) return;
+                Directory.CreateDirectory(Project.ToolsDir);
+                foreach (var old in Directory.GetFiles(Project.ToolsDir, "*.apk")) File.Delete(old);
+                var name = Path.GetFileName(d.FileName);
+                if (!name.ToLowerInvariant().Contains("magisk")) name = "Magisk-" + name;
+                File.Copy(d.FileName, Path.Combine(Project.ToolsDir, name), true);
+                UpdateMagiskLabel();
+            }
+        }
+
+        // ------------------------------------------------------------ helpers
         void Log(string text, Color? c = null)
         {
             if (InvokeRequired) { BeginInvoke(new Action(() => Log(text, c))); return; }
             log.SelectionStart = log.TextLength;
-            log.SelectionColor = c ?? Color.Gainsboro;
+            log.SelectionColor = c ?? (text.Contains("✖") ? Color.Tomato : text.Contains("✔") ? Color.LightGreen : text.StartsWith("▶") ? Color.DeepSkyBlue : Color.Gainsboro);
             log.AppendText(text + "\n");
             log.ScrollToCaret();
         }
@@ -152,163 +227,171 @@ namespace Ro2rwPc
         void SetBusy(bool busy)
         {
             if (InvokeRequired) { BeginInvoke(new Action(() => SetBusy(busy))); return; }
-            btnPick.Enabled = !busy; btnStart.Enabled = !busy && superPath != null; btnCancel.Enabled = busy;
-            lvParts.Enabled = !busy;
+            foreach (var b in new Control[] { btnRun, btnNewProj, btnAddFiles, btnRefresh, cmbProject, lvFiles }) b.Enabled = !busy;
+            btnCancel.Enabled = busy;
             UseWaitCursor = busy;
         }
 
-        // ------------------------------------------------------------ actions
-        void PickFile()
+        static void Msg(IWin32Window w, string text, MessageBoxIcon icon = MessageBoxIcon.Information)
         {
-            using (var d = new OpenFileDialog { Title = "בחר super.img", Filter = "super image|super*.img;super*.img.*;super*;*.img|כל הקבצים|*.*" })
-                if (d.ShowDialog(this) == DialogResult.OK) LoadSuper(d.FileName);
+            MessageBox.Show(w, text, "RO2RW PC", MessageBoxButtons.OK, icon, MessageBoxDefaultButton.Button1, MessageBoxOptions.RtlReading | MessageBoxOptions.RightAlign);
         }
 
-        void LoadSuper(string path)
+        // ------------------------------------------------------------ projects
+        void LoadProjects(string select)
         {
+            cmbProject.Items.Clear();
+            foreach (var p in Project.List()) cmbProject.Items.Add(p);
+            if (select != null && cmbProject.Items.Contains(select)) cmbProject.SelectedItem = select;
+            else if (cmbProject.Items.Count > 0) cmbProject.SelectedIndex = 0;
+            else { project = null; lblProj.Text = "אין פרויקטים. לחץ \"פרויקט חדש\"."; lvFiles.Items.Clear(); }
+        }
+
+        void NewProject()
+        {
+            string name = Prompt("שם הפרויקט (שם המכשיר, למשל Cubot_J20):", "פרויקט חדש");
+            if (string.IsNullOrWhiteSpace(name)) return;
+            try
+            {
+                var p = Project.Open(name);
+                Log("נוצר פרויקט: " + p.Root, Color.LightGreen);
+                LoadProjects(p.Name);
+            }
+            catch (Exception ex) { Msg(this, ex.Message, MessageBoxIcon.Error); }
+        }
+
+        string Prompt(string text, string title)
+        {
+            using (var f = new Form { Text = title, Size = new Size(460, 170), FormBorderStyle = FormBorderStyle.FixedDialog, StartPosition = FormStartPosition.CenterParent, MinimizeBox = false, MaximizeBox = false, RightToLeft = RightToLeft.Yes, RightToLeftLayout = true, Font = fBase })
+            {
+                var l = new Label { Text = text, Location = new Point(12, 12), Size = new Size(420, 24) };
+                var tb = new TextBox { Location = new Point(12, 40), Size = new Size(420, 28), RightToLeft = RightToLeft.No };
+                var ok = new Button { Text = "אישור", DialogResult = DialogResult.OK, Location = new Point(12, 80), Size = new Size(100, 32) };
+                var cn = new Button { Text = "ביטול", DialogResult = DialogResult.Cancel, Location = new Point(120, 80), Size = new Size(100, 32) };
+                f.Controls.AddRange(new Control[] { l, tb, ok, cn });
+                f.AcceptButton = ok; f.CancelButton = cn;
+                return f.ShowDialog(this) == DialogResult.OK ? tb.Text : null;
+            }
+        }
+
+        void OpenProject(string name)
+        {
+            try
+            {
+                project = Project.Open(name);
+                lblProj.Text = project.Root;
+                RefreshFiles();
+            }
+            catch (Exception ex) { Log("שגיאה: " + ex.Message, Color.Tomato); }
+        }
+
+        void RefreshFiles()
+        {
+            lvFiles.Items.Clear();
+            if (project == null) return;
+            files = project.Scan();
+            foreach (var f in files)
+            {
+                var it = new ListViewItem(new[] { f.Name, f.Kind, Converter.Human(f.Size), Project.ActionName(f.Action), f.Edited ? "✔" : "" }) { Tag = f };
+                if (f.Action == EditAction.None) it.ForeColor = Color.Gray;
+                lvFiles.Items.Add(it);
+                it.Checked = f.Selected;
+            }
+            if (files.Count == 0) Log("הפרויקט ריק. הוסף קבצי רום (super, boot, init_boot, vbmeta, lk...) בכפתור \"הוסף קבצים\" או בגרירה.", Color.Khaki);
+        }
+
+        void PickFiles()
+        {
+            if (project == null) { Msg(this, "צור או בחר פרויקט קודם."); return; }
+            using (var d = new OpenFileDialog { Multiselect = true, Title = "בחר קבצי רום להוספה לפרויקט", Filter = "קבצי רום|*.img;*.bin;*.img.*|כל הקבצים|*.*" })
+                if (d.ShowDialog(this) == DialogResult.OK) AddFiles(d.FileNames);
+        }
+
+        void AddFiles(string[] paths)
+        {
+            if (project == null) { Msg(this, "צור או בחר פרויקט קודם."); return; }
             if (worker != null && worker.IsAlive) return;
-            lvParts.Items.Clear();
-            lblSuperInfo.Text = "";
-            superPath = null;
-            btnStart.Enabled = false;
-            lblFile.Text = path;
-            Log("טוען " + Path.GetFileName(path) + "...", Color.DeepSkyBlue);
+            var list = paths.Where(File.Exists).ToArray();
             SetBusy(true);
             worker = new Thread(() =>
             {
                 try
                 {
-                    using (var c = new Converter())
+                    foreach (var p in list)
                     {
-                        c.Log = s => Log(s);
-                        c.Open(path);
-                        var parts = c.Parts;
-                        string info = string.Format("גודל super: {0}  |  {1} מחיצות עם תוכן  |  {2}",
-                            Converter.Human(c.DeviceSize), parts.Count(p => p.Size > 0), c.IsSparse ? "sparse" : "raw");
-                        BeginInvoke(new Action(() =>
-                        {
-                            superPath = path;
-                            lblSuperInfo.Text = info;
-                            lastParts.Clear();
-                            foreach (var p in parts.Where(x => x.Size > 0))
-                            {
-                                var it = new ListViewItem(new[] { p.Name, p.Fs == "RAW" ? "לא מוכר (יועתק)" : p.Fs, Converter.Human(p.Size), p.Category }) { Tag = p };
-                                lvParts.Items.Add(it);
-                                it.Checked = p.Convert;
-                                lastParts[p.Name] = p;
-                            }
-                            Log("הקובץ נטען. סמן מחיצות ולחץ \"התחל המרה\".", Color.LightGreen);
-                        }));
+                        string dest = Path.Combine(project.Root, Path.GetFileName(p));
+                        if (Path.GetFullPath(dest).Equals(Path.GetFullPath(p), StringComparison.OrdinalIgnoreCase)) continue;
+                        Log("מעתיק " + Path.GetFileName(p) + "...");
+                        File.Copy(p, dest, true);
                     }
                 }
-                catch (Exception ex) { Log("שגיאה: " + ex.Message, Color.Tomato); }
-                finally { SetBusy(false); }
+                catch (Exception ex) { Log("שגיאה בהעתקה: " + ex.Message, Color.Tomato); }
+                finally { SetBusy(false); BeginInvoke(new Action(RefreshFiles)); }
             }) { IsBackground = true };
             worker.Start();
         }
 
-        void StartConvert()
+        // ------------------------------------------------------------ run
+        void RunEdits()
         {
-            if (superPath == null) return;
+            if (project == null) { Msg(this, "צור או בחר פרויקט קודם."); return; }
+            var sel = files.Where(f => f.Selected && f.Action != EditAction.None).ToList();
+            if (sel.Count == 0) { Msg(this, "לא סומנו קבצים לעריכה."); return; }
             int sum = (int)(nS.Value + nV.Value + nP.Value + nSE.Value + nOT.Value);
-            if (rbMax.Checked && sum > 100) { MessageBox.Show(this, "סכום האחוזים גדול מ-100%.", "RO2RW", MessageBoxButtons.OK, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button1, MessageBoxOptions.RtlReading | MessageBoxOptions.RightAlign); return; }
-            var selected = new HashSet<string>(lvParts.Items.Cast<ListViewItem>().Where(i => i.Checked).Select(i => ((PartInfo)i.Tag).Name));
-            if (selected.Count == 0) { MessageBox.Show(this, "לא נבחרה אף מחיצה להמרה.", "RO2RW", MessageBoxButtons.OK, MessageBoxIcon.Information, MessageBoxDefaultButton.Button1, MessageBoxOptions.RtlReading | MessageBoxOptions.RightAlign); return; }
-            var st = new Settings
+            if (rbMax.Checked && sum > 100 && sel.Any(f => f.Action == EditAction.Ro2rw)) { Msg(this, "סכום האחוזים ב-RO2RW גדול מ-100%.", MessageBoxIcon.Warning); return; }
+
+            var st = new EditSettings();
+            st.Ro2rw = new Settings
             {
                 MaxMode = rbMax.Checked, PctS = (int)nS.Value, PctV = (int)nV.Value, PctP = (int)nP.Value, PctSE = (int)nSE.Value, PctOT = (int)nOT.Value,
-                FixedMb = (int)nFixed.Value, SparseOutput = cbSparse.Checked, PatchVendorFstab = cbFstab.Checked, PatchVbmeta = cbVbmeta.Checked
+                FixedMb = (int)nFixed.Value, SparseOutput = cbSparse.Checked, PatchVendorFstab = cbFstab.Checked
             };
-            string path = superPath;
-            outDir = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(path)), "RO2RW_output");
+            st.Magisk = new MagiskOptions { KeepVerity = cbKeepVerity.Checked, KeepForceEncrypt = cbKeepEnc.Checked, Abi = (string)cmbAbi.SelectedItem };
+            st.LkDelay = cbLkDelay.Checked; st.LkText = cbLkText.Checked;
+
             cancel = false;
             SetBusy(true);
-            btnOpenOut.Enabled = false;
             SetProgress(0);
+            var proj = project;
             worker = new Thread(() =>
             {
                 var sw = Stopwatch.StartNew();
                 try
                 {
-                    Directory.CreateDirectory(outDir);
-                    using (var c = new Converter())
-                    {
-                        c.Log = s => Log(s);
-                        c.Progress = SetProgress;
-                        c.Cancelled = () => cancel;
-                        c.Open(path);
-                        CheckDisk(c.DeviceSize, st.SparseOutput);
-                        foreach (var p in c.Parts) p.Convert = selected.Contains(p.Name) && (p.Fs == "EROFS" || p.Fs == "EXT4");
-                        Log("שלב 1/3: קריאת מערכות הקבצים", Color.DeepSkyBlue);
-                        c.Analyse(st);
-                        Log("שלב 2/3: חישוב גדלים", Color.DeepSkyBlue);
-                        c.Plan(st);
-                        Log("שלב 3/3: כתיבת super חדש", Color.DeepSkyBlue);
-                        string outFile = c.Write(st, outDir);
-                        string vb = st.PatchVbmeta ? Converter.PatchVbmeta(path, outDir, s => Log(s)) : null;
-                        WriteReadme(outFile, vb, c);
-                        Log("", null);
-                        Log("הסתיים בהצלחה תוך " + sw.Elapsed.ToString(@"mm\:ss") + "!", Color.LightGreen);
-                        Log("קובץ: " + outFile, Color.LightGreen);
-                        if (vb != null) Log("vbmeta עם אימות כבוי: " + vb, Color.LightGreen);
-                        else if (st.PatchVbmeta) Log("לא נמצא vbmeta.img ליד super - דלג או צרוב עם: fastboot --disable-verity --disable-verification flash vbmeta vbmeta.img", Color.Khaki);
-                        Log("הוראות צריבה נשמרו בקובץ HOW_TO_FLASH.txt בתיקיית הפלט.", Color.LightGreen);
-                        BeginInvoke(new Action(() => { btnOpenOut.Enabled = true; }));
-                    }
+                    var ed = new Editor { Log = s => Log(s), Progress = SetProgress, Cancelled = () => cancel };
+                    int ok = ed.Run(proj, sel, st);
+                    Log("");
+                    Log(string.Format("הסתיים: {0} מתוך {1} קבצים נערכו בהצלחה ({2})", ok, sel.Count, sw.Elapsed.ToString(@"mm\:ss")), ok == sel.Count ? Color.LightGreen : Color.Khaki);
+                    Log("הקבצים הערוכים נמצאים ב: " + proj.Edited, Color.LightGreen);
+                    WriteFlashHelp(proj, sel);
                 }
                 catch (OperationCanceledException) { Log("בוטל.", Color.Khaki); }
-                catch (Exception ex)
+                catch (Exception ex) { Log("שגיאה: " + ex.Message, Color.Tomato); }
+                finally
                 {
-                    Log("שגיאה: " + ex.Message, Color.Tomato);
-                    try { File.AppendAllText(Path.Combine(outDir, "error.log"), DateTime.Now + "\r\n" + ex + "\r\n\r\n"); } catch { }
+                    SetBusy(false);
+                    BeginInvoke(new Action(() => { RefreshFiles(); UpdateMagiskLabel(); }));
                 }
-                finally { SetBusy(false); }
             }) { IsBackground = true };
             worker.Start();
         }
 
-        void CheckDisk(long superSize, bool sparse)
+        static void WriteFlashHelp(Project proj, List<ProjectFile> sel)
         {
-            try
+            var lines = new List<string> { "RO2RW PC - קבצים ערוכים", "=========================", "", "!!! גבה את המכשיר לפני הצריבה. האחריות עליך. !!!", "", "צריבה ב-fastboot (או ב-SP Flash Tool / mtkclient לפי שם המחיצה):" };
+            foreach (var f in sel)
             {
-                var drive = new DriveInfo(Path.GetPathRoot(outDir));
-                long need = superSize + (sparse ? superSize : 0) + (64L << 20);
-                if (drive.AvailableFreeSpace < need)
-                    throw new IOException(string.Format("אין מספיק מקום בכונן {0}: צריך כ-{1}, פנויים {2}.", drive.Name, Converter.Human(need), Converter.Human(drive.AvailableFreeSpace)));
+                string path = Path.Combine(proj.Edited, f.Name);
+                if (!File.Exists(path)) continue;
+                string part = Path.GetFileNameWithoutExtension(f.Name);
+                lines.Add(string.Format("  fastboot flash {0} {1}", part, f.Name));
             }
-            catch (ArgumentException) { }
-        }
-
-        void WriteReadme(string outFile, string vbmeta, Converter c)
-        {
-            var lines = new List<string>
-            {
-                "RO2RW PC - הוראות צריבה",
-                "=========================",
-                "",
-                "!!! גבה את המכשיר לפני הצריבה. האחריות עליך. !!!",
-                "",
-                "קבצים:",
-                "  " + Path.GetFileName(outFile) + "  - super חדש עם מחיצות ext4 לקריאה וכתיבה",
-            };
-            if (vbmeta != null) lines.Add("  " + Path.GetFileName(vbmeta) + "  - vbmeta עם אימות (verity) כבוי");
-            lines.Add("");
-            lines.Add("צריבה ב-fastboot (הטלפון במצב fastboot / fastbootd):");
-            lines.Add("  fastboot flash super " + Path.GetFileName(outFile));
-            if (vbmeta != null) lines.Add("  fastboot flash vbmeta " + Path.GetFileName(vbmeta));
-            else lines.Add("  fastboot --disable-verity --disable-verification flash vbmeta vbmeta.img");
-            lines.Add("  fastboot reboot");
             lines.Add("");
             lines.Add("הערות:");
-            lines.Add(" * חובה לכבות את האימות (vbmeta), אחרת המכשיר לא יעלה עם מחיצות ששונו.");
-            lines.Add(" * אם ה-fstab שבתוך ה-boot / vendor_boot מכיר רק erofs, ייתכן שתצטרך גם לתקן אותו.");
-            lines.Add("   (ב-vendor עצמו נוספו שורות ext4 אוטומטית.)");
-            lines.Add(" * אחרי ההפעלה, עם root: mount -o rw,remount /  (או המחיצה הרצויה)");
-            lines.Add("");
-            lines.Add("מחיצות:");
-            foreach (var p in c.Parts.Where(x => x.FinalBytes > 0))
-                lines.Add(string.Format("  {0,-16} {1,-6} {2,10}  {3}", p.Name, p.Convert ? "ext4" : p.Fs, Converter.Human(p.FinalBytes), p.Convert ? "(פנוי ≈ " + Converter.Human(p.FinalBytes - p.MinBytes) + ")" : "(הועתק)"));
-            File.WriteAllLines(Path.Combine(outDir, "HOW_TO_FLASH.txt"), lines, new System.Text.UTF8Encoding(true));
+            lines.Add(" * vbmeta ערוך מבטל את האימות, ואין צורך בדגלי --disable-verity.");
+            lines.Add(" * אחרי צריבת boot/init_boot עם Magisk, התקן את אפליקציית Magisk בטלפון.");
+            lines.Add(" * אחרי super עם RO2RW (ext4): mount -o rw,remount / עם root.");
+            try { File.WriteAllLines(Path.Combine(proj.Edited, "HOW_TO_FLASH.txt"), lines, new System.Text.UTF8Encoding(true)); } catch { }
         }
     }
 }
