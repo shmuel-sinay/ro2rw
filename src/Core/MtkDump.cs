@@ -277,3 +277,82 @@ namespace Ro2rwPc
         }
     }
 }
+
+namespace Ro2rwPc
+{
+    /// <summary>Builds a scatter inside "ערוך" so SP Flash Tool flashes only the edited partitions.</summary>
+    public static class EditedScatter
+    {
+        static string FindEdited(string editedDir, string fileName, string partName)
+        {
+            var cands = new List<string>();
+            if (!string.IsNullOrEmpty(fileName) && fileName != "NONE") cands.Add(Path.GetFileName(fileName));
+            cands.Add(partName + ".img"); cands.Add(partName + ".bin");
+            foreach (var c in cands)
+                if (File.Exists(Path.Combine(editedDir, c))) return c;
+            return null;
+        }
+
+        /// <returns>path of the new scatter, or null if no source (stock scatter / gpt.bin) exists.</returns>
+        public static string Create(Project proj, Action<string> log)
+        {
+            string src = Directory.GetFiles(proj.Root, "*_scatter.txt").OrderBy(f => f).FirstOrDefault()
+                      ?? Directory.GetFiles(proj.Root, "*scatter*.txt").OrderBy(f => f).FirstOrDefault();
+            var enabled = new List<string>();
+            string outPath;
+            if (src != null)
+            {
+                var lines = File.ReadAllLines(src).ToList();
+                // split into blocks starting at "partition_index"
+                var starts = new List<int>();
+                for (int i = 0; i < lines.Count; i++) if (Regex.IsMatch(lines[i], @"^\s*-?\s*partition_index\s*:")) starts.Add(i);
+                for (int b = 0; b < starts.Count; b++)
+                {
+                    int s = starts[b], e = b + 1 < starts.Count ? starts[b + 1] : lines.Count;
+                    string name = null, file = null; int fileLine = -1, dlLine = -1;
+                    for (int i = s; i < e; i++)
+                    {
+                        var m = Regex.Match(lines[i], @"^(\s*)(partition_name|file_name|is_download)\s*:\s*(.*?)\s*$");
+                        if (!m.Success) continue;
+                        if (m.Groups[2].Value == "partition_name") name = m.Groups[3].Value;
+                        else if (m.Groups[2].Value == "file_name") { file = m.Groups[3].Value; fileLine = i; }
+                        else dlLine = i;
+                    }
+                    if (name == null || dlLine < 0) continue;
+                    string ed = FindEdited(proj.Edited, file, name);
+                    string indent = Regex.Match(lines[dlLine], @"^\s*").Value;
+                    lines[dlLine] = indent + "is_download: " + (ed != null ? "true" : "false");
+                    if (ed != null)
+                    {
+                        if (fileLine >= 0) lines[fileLine] = Regex.Match(lines[fileLine], @"^\s*").Value + "file_name: " + ed;
+                        enabled.Add(name);
+                    }
+                }
+                outPath = Path.Combine(proj.Edited, Path.GetFileName(src));
+                File.WriteAllLines(outPath, lines, new UTF8Encoding(false));
+                log("נוצר scatter ל-SP Flash Tool (על בסיס " + Path.GetFileName(src) + "): " + Project.EditedDir + "\\" + Path.GetFileName(outPath));
+            }
+            else if (File.Exists(Path.Combine(proj.Root, "gpt.bin")))
+            {
+                var g = Gpt.Parse(File.ReadAllBytes(Path.Combine(proj.Root, "gpt.bin")));
+                string platform = null;
+                var mlog = Path.Combine(proj.Root, "mtkclient_log.txt");
+                if (File.Exists(mlog)) { var pm = Regex.Match(File.ReadAllText(mlog), @"\b(MT[0-9]{4}[A-Z]?)\b"); if (pm.Success) platform = pm.Groups[1].Value; }
+                outPath = ScatterWriter.Write(proj.Edited, proj.Name, g, platform, g.SectorSize == 4096, n =>
+                {
+                    var ed = FindEdited(proj.Edited, null, n);
+                    if (ed != null) enabled.Add(n);
+                    return ed;
+                });
+                log("נוצר scatter ל-SP Flash Tool (מטבלת gpt.bin): " + Project.EditedDir + "\\" + Path.GetFileName(outPath));
+            }
+            else
+            {
+                log("! לא נוצר scatter: אין בפרויקט קובץ scatter מהקושחה או gpt.bin. העתק לפרויקט את קובץ ה-*_scatter.txt מהקושחה ובצע שוב.");
+                return null;
+            }
+            log("  מסומנות לצריבה: " + (enabled.Count > 0 ? string.Join(", ", enabled) : "(אף מחיצה)") + ". שאר המחיצות לא ייצרבו.");
+            return outPath;
+        }
+    }
+}

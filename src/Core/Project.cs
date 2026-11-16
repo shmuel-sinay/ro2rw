@@ -207,6 +207,11 @@ namespace Ro2rwPc
                 idx++;
                 Progress(idx * 1000 / todo.Count);
             }
+            if (ok > 0)
+            {
+                Log("");
+                try { EditedScatter.Create(proj, Log); } catch (Exception ex) { Log("! יצירת scatter נכשלה: " + ex.Message); }
+            }
             return ok;
         }
     }

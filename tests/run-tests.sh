@@ -106,5 +106,15 @@ d=open('lk.out','rb').read()
 assert d.find(bytes.fromhex('08B5002008BD1B681B68022B'))>0 and b'Orange' not in d and b'OTHER STRING KEPT' in d" && echo "ok   lk-patch" || { echo "FAIL lk-patch"; fail=1; }
 $T vbmeta vbmeta.img vb.out >/dev/null
 python3 -c "assert open('vb.out','rb').read()[123]==3" && echo "ok   vbmeta-patch" || { echo "FAIL vbmeta-patch"; fail=1; }
+# edited-folder scatter from a stock MTK scatter: only edited partitions enabled
+mkdir -p sc/ערוך && cp "$ROOT/tests/stock_scatter.txt" sc/MT6765_Android_scatter.txt
+echo x > sc/ערוך/lk.img; echo x > sc/ערוך/vbmeta.img
+$T scatter "$PWD/sc" >/dev/null
+python3 - <<'PY' && echo "ok   edited-scatter" || { echo "FAIL edited-scatter"; fail=1; }
+import re
+t=open('sc/ערוך/MT6765_Android_scatter.txt').read()
+dl={m.group(1):m.group(2) for m in re.finditer(r'partition_name: (\S+)\n  file_name: \S+\n  is_download: (\w+)', t)}
+assert dl=={'preloader':'false','lk':'true','boot':'false','vbmeta':'true','logo':'false','userdata':'false'}, dl
+PY
 cd ..
 exit $fail

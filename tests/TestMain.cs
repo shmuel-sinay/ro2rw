@@ -120,6 +120,12 @@ static class TestMain
                         Console.WriteLine(pf.Kind + "|" + pf.Action);
                         return 0;
                     }
+                case "scatter":
+                    {
+                        var proj = new Project { Name = "T", Root = a[1] };
+                        Console.WriteLine(EditedScatter.Create(proj, Console.WriteLine) ?? "null");
+                        return 0;
+                    }
                 case "ls":
                     using (var src = new RawFileSource(a[1]))
                     {

@@ -464,6 +464,7 @@ namespace Ro2rwPc
             }
             lines.Add("");
             lines.Add("הערות:");
+            lines.Add(" * SP Flash Tool: טען את קובץ ה-scatter שבתיקייה הזו. רק המחיצות שנערכו מסומנות. בחר Download Only.");
             lines.Add(" * vbmeta ערוך מבטל את האימות, ואין צורך בדגלי --disable-verity.");
             lines.Add(" * אחרי צריבת boot/init_boot עם Magisk, התקן את אפליקציית Magisk בטלפון.");
             lines.Add(" * אחרי super עם RO2RW (ext4): mount -o rw,remount / עם root.");
