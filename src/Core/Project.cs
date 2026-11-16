@@ -121,6 +121,11 @@ namespace Ro2rwPc
         public static void Classify(ProjectFile pf)
         {
             string n = pf.Name.ToLowerInvariant();
+            if (n.EndsWith(".txt") || n.EndsWith(".xml") || n.EndsWith(".log") || n.EndsWith(".ini") || n.EndsWith(".tmp") || n.EndsWith(".copying"))
+            {
+                pf.Kind = n.EndsWith(".ro2rw-plan.txt") ? "תכנון RO2RW" : n.EndsWith("_scatter.txt") ? "scatter" : "מידע";
+                return;
+            }
             byte[] h;
             try { h = Head(pf.Path, 8192); } catch { pf.Kind = "?"; return; }
             bool sparse = h.Length >= 4 && BitConverter.ToUInt32(h, 0) == SparseSource.Magic;

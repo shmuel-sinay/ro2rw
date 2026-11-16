@@ -100,8 +100,9 @@ static class TestMain
                         foreach (var f in files) Console.WriteLine(f.Name + " | " + f.Kind + " | " + f.Action);
                         var ed = new Editor { Log = Console.WriteLine };
                         int ok = ed.Run(proj, files, new EditSettings { Ro2rw = new Settings { SparseOutput = true } });
-                        Console.WriteLine("ok=" + ok + "/" + files.Count);
-                        return ok == files.Count ? 0 : 1;
+                        int want = files.Count(f => f.Selected && f.Action != EditAction.None);
+                        Console.WriteLine("ok=" + ok + "/" + want);
+                        return ok == want ? 0 : 1;
                     }
                 case "dump":
                     {
