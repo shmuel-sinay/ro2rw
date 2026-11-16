@@ -16,7 +16,7 @@ jobs:
       - name: Install tools
         run: |
           sudo apt-get update -q
-          sudo apt-get install -y -q mono-mcs mono-devel erofs-utils e2fsprogs android-sdk-libsparse-utils attr lz4 xz-utils cpio
+          sudo apt-get install -y -q mono-mcs mono-devel erofs-utils e2fsprogs android-sdk-libsparse-utils attr lz4 xz-utils cpio gdisk
       - name: Run core tests
         run: sudo bash tests/run-tests.sh "$RUNNER_TEMP/t"
 
@@ -111,6 +111,12 @@ jobs:
             3. "פרויקט חדש": נותנים שם, בדרך כלל שם המכשיר.
             4. "הוסף קבצים" (או גרירה): super, boot / init_boot, vbmeta, lk.
             5. "בצע עריכה": הקבצים הערוכים נשמרים בתיקייה **ערוך** בתוך הפרויקט, עם אותם שמות, יחד עם scatter ל-SP Flash Tool שבו מסומנות רק המחיצות שנערכו.
+
+            ### דרכי עבודה
+            - **🧙 אשף**: שלב אחרי שלב, כולל כמה MB להוסיף לכל מחיצה, וצריבה חזרה בסיום
+            - **פרויקט ידני**: שליטה מלאה. קליק ימני על קובץ: עריכה שלו בלבד, שינוי סוג העריכה, צריבה, מידע
+            - **כלים בודדים**: כל כלי לבד, על קובץ אחד
+            - **⬆ צרוב חזרה**: צריבת תיקיית "ערוך" למכשיר עם mtkclient (שמות המחיצות נבדקים מול gpt.bin, sparse מומר אוטומטית, מחיצות רגישות חסומות)
 
             ### כלים
             - **שאיבת רום (mtkclient מובנה)**: שואב את כל המחיצות לתוך הפרויקט בשמות המחיצות, ויוצר scatter

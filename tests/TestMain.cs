@@ -126,6 +126,14 @@ static class TestMain
                         Console.WriteLine(EditedScatter.Create(proj, Console.WriteLine) ?? "null");
                         return 0;
                     }
+                case "flash":
+                    {
+                        // flash <dir> <gpt.bin|-> : plan + flash with whatever mtk.exe is in tools/
+                        var items = Flasher.Plan(a[1], a[2] == "-" ? null : a[2]);
+                        foreach (var it in items) Console.WriteLine("plan " + Path.GetFileName(it.File) + " -> " + it.Partition + " | " + (it.Problem ?? "ok") + (it.Sparse ? " | sparse" : ""));
+                        new Flasher { Log = Console.WriteLine }.Flash(items, a[1], false);
+                        return 0;
+                    }
                 case "ls":
                     using (var src = new RawFileSource(a[1]))
                     {

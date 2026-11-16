@@ -5,16 +5,18 @@ namespace Ro2rwPc
 {
     static class Program
     {
-        public const string Version = "1.3.0";
+        public const string Version = "2.0.0";
 
         [STAThread]
-        static void Main()
+        static void Main(string[] args)
         {
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
             Application.ThreadException += (s, e) => ShowError(e.Exception);
             AppDomain.CurrentDomain.UnhandledException += (s, e) => ShowError(e.ExceptionObject as Exception);
-            Application.Run(new MainForm());
+            var f = new MainForm();
+            if (Array.IndexOf(args, "--wizard") >= 0) f.Shown += (s, e) => f.BeginInvoke(new Action(f.OpenWizard));
+            Application.Run(f);
         }
 
         static void ShowError(Exception ex)

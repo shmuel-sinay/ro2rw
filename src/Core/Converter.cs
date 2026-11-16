@@ -29,6 +29,8 @@ namespace Ro2rwPc
         public bool MaxMode = true;
         public int PctS = 70, PctV = 10, PctP = 10, PctSE = 5, PctOT = 5;
         public int FixedMb = 100;
+        /// <summary>FIXED mode per category (S/V/P/SE/OT) in MB; null = FixedMb for all.</summary>
+        public Dictionary<string, int> FixedMbPer;
         public bool SparseOutput = true;
         public bool PatchVendorFstab = true;
         public bool PatchVbmeta = true;
@@ -258,10 +260,16 @@ namespace Ro2rwPc
             }
             else
             {
-                long each = (long)st.FixedMb << 20;
-                if (each * conv.Count > freeAfterMargin)
-                    throw new InvalidDataException(string.Format("אין מספיק מקום: ביקשת {0} לכל מחיצה, אבל פנויים רק {1} לכולן יחד.", Human(each), Human(freeAfterMargin)));
-                foreach (var p in conv) extra[p] = each;
+                long total = 0;
+                foreach (var p in conv)
+                {
+                    int mb = st.FixedMb;
+                    if (st.FixedMbPer != null && st.FixedMbPer.ContainsKey(p.Category)) mb = st.FixedMbPer[p.Category];
+                    extra[p] = (long)mb << 20;
+                    total += extra[p];
+                }
+                if (total > freeAfterMargin)
+                    throw new InvalidDataException(string.Format("אין מספיק מקום: ביקשת להוסיף {0} בסך הכול, אבל פנויים ב-super רק {1}.", Human(total), Human(freeAfterMargin)));
             }
             foreach (var p in conv)
             {

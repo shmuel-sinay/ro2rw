@@ -116,5 +116,22 @@ t=open('sc/ערוך/MT6765_Android_scatter.txt').read()
 dl={m.group(1):m.group(2) for m in re.finditer(r'partition_name: (\S+)\n  file_name: \S+\n  is_download: (\w+)', t)}
 assert dl=={'preloader':'false','lk':'true','boot':'false','vbmeta':'true','logo':'false','userdata':'false'}, dl
 PY
+# flash back with a fake mtkclient: name mapping via gpt.bin, sparse expanded, sensitive partitions blocked
+mkdir -p fl/ed "$W/tools/mtkclient"
+cat > "$W/tools/mtkclient/mtk.exe" <<'SH'
+#!/bin/bash
+IFS=',' read -ra P <<< "$2"; IFS=',' read -ra F <<< "$3"
+for i in "${!P[@]}"; do cp "${F[$i]}" "$(dirname "$0")/written_${P[$i]}.bin"; done
+echo "$*" > "$(dirname "$0")/args.txt"
+SH
+chmod +x "$W/tools/mtkclient/mtk.exe"
+cp v2gz.img fl/ed/boot.img; cp vbmeta.img fl/ed/vbmeta.img; cp ../super.sparse.img fl/ed/super.img; head -c 1000 /dev/urandom > fl/ed/preloader.bin
+truncate -s 400M fl/disk.img
+sgdisk -o -n 1:2048:+32M -c 1:boot_a -n 2:0:+1M -c 2:vbmeta_a -n 3:0:+270M -c 3:super -n 4:0:+1M -c 4:preloader fl/disk.img >/dev/null
+head -c $((34*512)) fl/disk.img > fl/gpt.bin
+$T flash "$PWD/fl/ed" "$PWD/fl/gpt.bin" >/dev/null
+M="$W/tools/mtkclient"
+if grep -q "^w boot_a,super,vbmeta_a " "$M/args.txt" && cmp -s "$M/written_super.bin" ../super.raw && cmp -s "$M/written_boot_a.bin" v2gz.img \
+   && [ ! -e "$M/written_preloader.bin" ] && [ ! -d fl/ed/_flash_tmp ]; then echo "ok   flash-back"; else echo "FAIL flash-back: $(cat "$M/args.txt")"; fail=1; fi
 cd ..
 exit $fail
