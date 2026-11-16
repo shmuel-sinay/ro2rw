@@ -14,14 +14,20 @@
 ## שימוש: פרויקט לכל מכשיר
 
 1. **פרויקט חדש**: נותנים שם, בדרך כלל שם המכשיר. נוצרת תיקייה `Projects\<שם>` ליד התוכנה.
-2. **הוספת קבצים**: מוסיפים את קבצי הרום לפרויקט (כפתור "הוסף קבצים" או גרירה לחלון). התוכנה מזהה כל קובץ לבד:
+2. **הוספת קבצים**: אחת משתי דרכים:
+   - **שאיבה מהמכשיר** (MediaTek): כפתור "שאב רום מהמכשיר". mtkclient מובנה בתוכנה, שואב את כל המחיצות לתוך הפרויקט בשמות המחיצות (`boot_a.img`, `lk_a.img`...), ויוצר גם `gpt.bin`, קובץ scatter ויומן. בפעם הראשונה לוחצים "דרייבר USB" כדי להתקין את UsbDk.
+   - **קבצים קיימים**: כפתור "הוסף קבצים" או גרירה לחלון.
+
+   התוכנה מזהה כל קובץ לבד:
 
 | קובץ | עריכה |
 |---|---|
 | `super.img` (raw, sparse או מפוצל) | **RO2RW**: ממיר את המחיצות ל-ext4 לקריאה וכתיבה, עם מקום פנוי (MAX או FIXED) |
-| `boot.img` / `init_boot.img` | **Root עם Magisk**: עריכה על המחשב, זהה לאפליקציית Magisk. ה-APK הרשמי יורד אוטומטית |
+| `boot.img` / `init_boot.img` | **Root עם Magisk** (מובנה): עריכה על המחשב, זהה לאפליקציית Magisk. ה-ABI מזוהה מקובץ init שב-ramdisk |
 | `vbmeta*.img` | **ביטול AVB**: verity ו-verification כבויים (הלוגיקה של AVB-Disabler) |
 | `lk*.img` / `lk*.bin` | **הסרת Orange State**: ביטול ההשהיה של 5 שניות ומחיקת טקסט האזהרה. גרסת האנדרואיד מזוהה אוטומטית |
+
+   כברירת מחדל מסומנים רק קבצי חריץ A, רק vbmeta הראשי, ו-init_boot במקום boot כשקיים.
 
 3. **בצע עריכה**: הקבצים הערוכים נשמרים בתיקייה **`ערוך`** בתוך הפרויקט, עם אותם שמות. המקור לא משתנה. נוצר גם קובץ `HOW_TO_FLASH.txt`.
 
@@ -62,3 +68,9 @@ fastboot flash vbmeta vbmeta.img
 רעיון ההגדרות (MAX/FIXED, S/V/P/SE/OT) מבוסס על RO2RW מאת LeeGarChat.
 
 מבוסס על: RO2RW מאת LeeGarChat · ‏Magisk מאת topjohnwu (‏boot_patch.sh ו-magiskboot) · ‏AVB-Disabler · ‏hex-replacer · המדריך של hovatek ל-Orange State.
+
+## רכיבים מובנים
+
+ה-EXE כולל שני כלים חיצוניים. שניהם נבנים או נלקחים בזמן הבנייה ב-GitHub Actions ממקור רשמי:
+- [mtkclient](https://github.com/bkerler/mtkclient) מאת bkerler (רישיון GPLv3): נבנה מקוד המקור בקומיט קבוע, ומחולץ לתיקייה `tools\mtkclient` בשימוש הראשון.
+- [Magisk](https://github.com/topjohnwu/Magisk) מאת topjohnwu (רישיון GPLv3): ה-APK הרשמי מהמהדורה האחרונה. מי שרוצה גרסה אחרת יכול לבחור APK בלשונית Magisk.

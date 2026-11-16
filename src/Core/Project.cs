@@ -64,9 +64,18 @@ namespace Ro2rwPc
             {
                 var pf = new ProjectFile { Path = f, Size = new FileInfo(f).Length };
                 Classify(pf);
-                pf.Selected = pf.Action != EditAction.None;
                 pf.Edited = File.Exists(System.IO.Path.Combine(Edited, pf.Name));
                 list.Add(pf);
+            }
+            // default selection: slot A / unslotted only, main vbmeta only, init_boot instead of boot when present
+            bool hasInitBoot = list.Any(f => f.Kind == "init_boot");
+            foreach (var pf in list)
+            {
+                string bn = System.IO.Path.GetFileNameWithoutExtension(pf.Name).ToLowerInvariant();
+                pf.Selected = pf.Action != EditAction.None
+                    && !bn.EndsWith("_b")
+                    && !(pf.Action == EditAction.Vbmeta && bn.StartsWith("vbmeta_"))
+                    && !(pf.Action == EditAction.Magisk && pf.Kind == "boot" && hasInitBoot);
             }
             return list;
         }
@@ -92,6 +101,7 @@ namespace Ro2rwPc
                 pf.Kind = "super" + (sparse ? " (sparse)" : ""); pf.Action = EditAction.Ro2rw; return;
             }
             if (VbmetaPatcher.IsVbmeta(h)) { pf.Kind = "vbmeta"; pf.Action = EditAction.Vbmeta; return; }
+            if (n == "gpt.bin" || n.EndsWith("_scatter.txt") || n == "mtkclient_log.txt") { pf.Kind = n == "gpt.bin" ? "GPT" : "מידע"; return; }
             if (BootImage.IsBoot(h))
             {
                 pf.Kind = n.StartsWith("init_boot") ? "init_boot" : n.StartsWith("recovery") ? "recovery" : "boot";

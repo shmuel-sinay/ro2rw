@@ -80,10 +80,13 @@ namespace Ro2rwPc
             return res;
         }
 
+        /// <summary>True only for a real LK image: MTK section header whose name is "lk" (other MTK images share the magic).</summary>
         public static bool LooksLikeLk(byte[] b)
         {
-            if (b.Length > 8 && BitConverter.ToUInt32(b, 0) == 0x58881688) return true;
-            return false;
+            if (b.Length < 40 || BitConverter.ToUInt32(b, 0) != 0x58881688) return false;
+            int n = 0; while (n < 32 && b[8 + n] != 0) n++;
+            string name = Encoding.ASCII.GetString(b, 8, n).ToLowerInvariant();
+            return name == "lk" || name == "lk_a" || name == "lk_b";
         }
     }
 
@@ -102,6 +105,23 @@ namespace Ro2rwPc
             Directory.CreateDirectory(toolsDir);
             var local = Directory.GetFiles(toolsDir, "*.apk").Where(f => Path.GetFileName(f).ToLowerInvariant().Contains("magisk")).OrderByDescending(f => File.GetLastWriteTimeUtc(f)).FirstOrDefault();
             if (local != null) { log("  משתמש ב-" + Path.GetFileName(local)); return local; }
+            // built-in Magisk (embedded at build time)
+            var asm = System.Reflection.Assembly.GetExecutingAssembly();
+            using (var rs = asm.GetManifestResourceStream("Magisk.apk"))
+            {
+                if (rs != null)
+                {
+                    string ver = "";
+                    using (var vs = asm.GetManifestResourceStream("Magisk.version"))
+                        if (vs != null) ver = new StreamReader(vs).ReadToEnd().Trim();
+                    string dest0 = Path.Combine(toolsDir, "builtin", "Magisk-" + (ver.Length > 0 ? ver : "builtin") + ".apk");
+                    Directory.CreateDirectory(Path.GetDirectoryName(dest0));
+                    if (!File.Exists(dest0) || new FileInfo(dest0).Length != rs.Length)
+                        using (var f = File.Create(dest0)) rs.CopyTo(f);
+                    log("  Magisk מובנה: " + Path.GetFileName(dest0));
+                    return dest0;
+                }
+            }
             log("  מוריד את Magisk הרשמי מ-GitHub (topjohnwu/Magisk)...");
             try { ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls12; } catch { }
             string json;
@@ -137,24 +157,10 @@ namespace Ro2rwPc
             log("  " + bi.Info);
 
             string abi = opt.Abi;
-            if (abi == "auto")
-            {
-                abi = "arm64-v8a";
-                if (bi.Kernel.Length > 0 && !bi.KernelIsArm64) abi = "armeabi-v7a";
-                log("  ABI: " + abi + (bi.Kernel.Length == 0 ? " (ברירת מחדל - אין kernel ב-init_boot)" : " (לפי ה-kernel)"));
-            }
 
             using (var z = ZipFile.OpenRead(apkPath))
             {
                 string script = Encoding.UTF8.GetString(ZipGet(z, "assets/boot_patch.sh") ?? new byte[0]);
-                var magiskinit = ZipGet(z, "lib/" + abi + "/libmagiskinit.so");
-                if (magiskinit == null) throw new InvalidDataException("ב-Magisk.apk אין קבצים עבור " + abi);
-                var magisk = ZipGet(z, "lib/" + abi + "/libmagisk.so");
-                var magisk64 = ZipGet(z, "lib/" + abi + "/libmagisk64.so");
-                var magisk32 = ZipGet(z, "lib/" + abi + "/libmagisk32.so") ?? (abi == "arm64-v8a" ? ZipGet(z, "lib/armeabi-v7a/libmagisk32.so") : abi == "x86_64" ? ZipGet(z, "lib/x86/libmagisk32.so") : null);
-                var initld = ZipGet(z, "lib/" + abi + "/libinit-ld.so");
-                var stub = ZipGet(z, "assets/stub.apk");
-                bool newScheme = script.Contains("overlay.d/sbin/magisk.xz") || (magisk != null && magisk64 == null);
 
                 // ---- ramdisk
                 RamdiskFormat fmt;
@@ -172,11 +178,26 @@ namespace Ro2rwPc
                     log("  ramdisk: " + fmt);
                     cpio = Cpio.Load(Compress.Decompress(bi.Ramdisk, fmt));
                 }
+                if (abi == "auto")
+                {
+                    string why;
+                    abi = DetectAbi(cpio, bi, out why);
+                    log("  ABI: " + abi + " (" + why + ")");
+                }
                 foreach (var f in new[] { "sbin/launch_daemonsu.sh", "sbin/su", "init.xposed.rc", "boot/sbin/launch_daemonsu.sh" })
                     if (cpio.Exists(f)) throw new InvalidDataException("ה-boot נערך כבר על ידי כלי אחר. השתמש ב-boot מקורי.");
                 foreach (var f in new[] { ".backup/.magisk", "init.magisk.rc", "overlay/init.magisk.rc" })
                     if (cpio.Exists(f)) throw new InvalidDataException("ה-boot כבר עבר Magisk. השתמש ב-boot מקורי (לא ערוך).");
                 log("  זוהה boot מקורי");
+
+                var magiskinit = ZipGet(z, "lib/" + abi + "/libmagiskinit.so");
+                if (magiskinit == null) throw new InvalidDataException("ב-Magisk.apk אין קבצים עבור " + abi);
+                var magisk = ZipGet(z, "lib/" + abi + "/libmagisk.so");
+                var magisk64 = ZipGet(z, "lib/" + abi + "/libmagisk64.so");
+                var magisk32 = ZipGet(z, "lib/" + abi + "/libmagisk32.so") ?? (abi == "arm64-v8a" ? ZipGet(z, "lib/armeabi-v7a/libmagisk32.so") : abi == "x86_64" ? ZipGet(z, "lib/x86/libmagisk32.so") : null);
+                var initld = ZipGet(z, "lib/" + abi + "/libinit-ld.so");
+                var stub = ZipGet(z, "assets/stub.apk");
+                bool newScheme = script.Contains("overlay.d/sbin/magisk.xz") || (magisk != null && magisk64 == null);
 
                 string sha1;
                 using (var h = SHA1.Create()) sha1 = BitConverter.ToString(h.ComputeHash(boot)).Replace("-", "").ToLowerInvariant();
@@ -215,6 +236,52 @@ namespace Ro2rwPc
                 var outImg = bi.Repack(newRd);
                 return outImg;
             }
+        }
+
+        static string ElfAbi(byte[] d)
+        {
+            if (d == null || d.Length < 20 || d[0] != 0x7F || d[1] != 'E' || d[2] != 'L' || d[3] != 'F') return null;
+            int mach = BitConverter.ToUInt16(d, 18);
+            switch (mach)
+            {
+                case 0xB7: return "arm64-v8a";
+                case 0x28: return "armeabi-v7a";
+                case 0x3E: return "x86_64";
+                case 0x03: return "x86";
+            }
+            return null;
+        }
+
+        /// <summary>Userspace ABI = architecture of the ramdisk's init (what Magisk binaries must match).</summary>
+        public static string DetectAbi(Cpio cpio, BootImage bi, out string why)
+        {
+            foreach (var path in new[] { "init", "system/bin/init", "first_stage_ramdisk/system/bin/init" })
+            {
+                Cpio.Entry e;
+                if (cpio.Entries.TryGetValue(path, out e) && (e.Mode & Cpio.S_IFMT) == Cpio.S_IFREG)
+                {
+                    var abi = ElfAbi(e.Data);
+                    if (abi != null) { why = "לפי /" + path + " שב-ramdisk"; return abi; }
+                }
+            }
+            // any ELF in the ramdisk
+            foreach (var kv in cpio.Entries)
+            {
+                if ((kv.Value.Mode & Cpio.S_IFMT) != Cpio.S_IFREG) continue;
+                var abi = ElfAbi(kv.Value.Data);
+                if (abi != null) { why = "לפי /" + kv.Key + " שב-ramdisk"; return abi; }
+            }
+            // kernel (raw or gzip/lz4)
+            byte[] k = bi.Kernel;
+            try
+            {
+                var f = Compress.Detect(k);
+                if (f == RamdiskFormat.Gzip || f == RamdiskFormat.Lz4Legacy || f == RamdiskFormat.Lz4Frame) k = Compress.Decompress(k, f);
+            }
+            catch { }
+            if (k.Length > 0x40 && Encoding.ASCII.GetString(k, 0x38, 4) == "ARM\x64") { why = "לפי ה-kernel (ARM64)"; return "arm64-v8a"; }
+            why = "לא זוהה - ברירת מחדל. אם המערכת 32 ביט בחר armeabi-v7a ידנית";
+            return "arm64-v8a";
         }
 
         static readonly string[] VerityPat = { "verifyatboot", "verify", "avb_keys", "avb", "support_scfs", "fsverity" };

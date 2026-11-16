@@ -4,7 +4,10 @@ out, ver, fmt = sys.argv[1], int(sys.argv[2]), sys.argv[3]
 mtk = 'mtk' in sys.argv; avb = 'avb' in sys.argv
 os.makedirs('rd', exist_ok=True)
 os.system('rm -rf rd/*; mkdir -p rd/system/bin')
-open('rd/init','wb').write(b'\x7fELF' + b'ORIGINAL-INIT'*1000)
+arch32 = 'arm32' in sys.argv
+elf = bytearray(64); elf[0:4] = b'\x7fELF'; elf[4] = 1 if arch32 else 2; elf[5] = 1
+elf[18:20] = struct.pack('<H', 0x28 if arch32 else 0xB7)
+open('rd/init','wb').write(bytes(elf) + b'ORIGINAL-INIT'*1000)
 open('rd/fstab.mt6765','w').write('/dev/block/by-name/system /system ext4 ro wait,verify,avb=vbmeta_system,logical,first_stage_mount\n/dev/block/by-name/userdata /data f2fs noatime forceencrypt=footer,fileencryption=aes-256-xts,quota\n')
 open('rd/verity_key','wb').write(b'K'*100)
 os.symlink('/system/bin/init', 'rd/system/bin/initlink') if not os.path.exists('rd/system/bin/initlink') else None
@@ -12,7 +15,7 @@ cpio = subprocess.run('cd rd && find . | sort | cpio -o -H newc --quiet', shell=
 if fmt == 'gzip': rd = gzip.compress(cpio)
 elif fmt == 'lz4': open('t.cpio','wb').write(cpio); os.system('lz4 -l -f -q t.cpio t.lz4'); rd = open('t.lz4','rb').read()
 else: rd = cpio
-kernel = b'\x00'*0x38 + b'ARM\x64' + os.urandom(100000)
+kernel = gzip.compress(b'\x00'*0x38 + b'ARM\x64' + os.urandom(100000))
 if mtk:
     def mh(d, name): return struct.pack('<II', 0x58881688, len(d)) + name.ljust(32, b'\0') + b'\xff'*472 + d
     rd = mh(rd, b'ROOTFS'); kernel = mh(kernel, b'KERNEL')

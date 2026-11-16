@@ -25,8 +25,48 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Checkout mtkclient (pinned)
+        uses: actions/checkout@v4
+        with:
+          repository: bkerler/mtkclient
+          ref: 118a000a83ea31c4f427fe5225abfe964546e05e
+          path: mtkclient-src
+      - name: Build mtk.exe (PyInstaller)
+        shell: pwsh
+        working-directory: mtkclient-src
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+          pyinstaller --noconfirm mtk_console.spec
+          $exe = Get-ChildItem dist -Filter "mtk_console_*.exe" | Select-Object -First 1
+          New-Item -ItemType Directory -Force ../src/res | Out-Null
+          Copy-Item $exe.FullName ../src/res/mtk.exe
+          Copy-Item LICENSE ../src/res/mtkclient-LICENSE.txt
+          ../src/res/mtk.exe --help | Select-Object -First 5
+          if ($LASTEXITCODE -ne 0) { throw "mtk.exe does not start" }
+      - name: Download official Magisk
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $rel = Invoke-RestMethod -Headers @{ Authorization = "Bearer $env:GH_TOKEN"; "User-Agent" = "RO2RW-PC" } https://api.github.com/repos/topjohnwu/Magisk/releases/latest
+          $apk = $rel.assets | Where-Object { $_.name -match '^Magisk-v.*\.apk$' } | Select-Object -First 1
+          if (-not $apk) { throw "Magisk apk not found" }
+          Invoke-WebRequest $apk.browser_download_url -OutFile src/res/Magisk.apk
+          Set-Content -NoNewline src/res/Magisk.version $rel.tag_name
+          "Magisk $($rel.tag_name): $((Get-Item src/res/Magisk.apk).Length) bytes"
       - name: Build EXE
         run: dotnet build src/RO2RW-PC.csproj -c Release -o out
+      - name: Check embedded tools
+        shell: pwsh
+        run: |
+          $size = (Get-Item out/RO2RW-PC.exe).Length
+          "RO2RW-PC.exe: $size bytes"
+          if ($size -lt 20MB) { throw "mtk.exe / Magisk were not embedded" }
       - name: Upload EXE
         uses: actions/upload-artifact@v4
         with:
@@ -73,9 +113,17 @@ jobs:
             5. "בצע עריכה": הקבצים הערוכים נשמרים בתיקייה **ערוך** בתוך הפרויקט, עם אותם שמות.
 
             ### כלים
+            - **שאיבת רום (mtkclient מובנה)**: שואב את כל המחיצות לתוך הפרויקט בשמות המחיצות, ויוצר scatter
             - **RO2RW**: super.img ל-ext4 לקריאה וכתיבה (raw, sparse ומפוצל; EROFS ו-ext4)
-            - **Root עם Magisk**: עריכת boot או init_boot על המחשב, כמו אפליקציית Magisk (ה-APK הרשמי יורד אוטומטית)
+            - **Root עם Magisk (מובנה)**: עריכת boot או init_boot על המחשב, כמו אפליקציית Magisk. ה-ABI מזוהה אוטומטית
             - **ביטול AVB**: vbmeta עם verity ו-verification כבויים
             - **הסרת Orange State**: lk בלי ההשהיה של 5 שניות ובלי טקסט האזהרה
+
+            ### שאיבה מהמכשיר
+            בפעם הראשונה לוחצים "דרייבר USB" כדי להתקין את UsbDk. אחר כך: "שאב רום מהמכשיר", מכבים את המכשיר, מחזיקים את לחצני העוצמה ומחברים כבל.
+
+            ### רכיבים מובנים ורישיונות
+            - mtkclient מאת bkerler, ‏GPLv3: https://github.com/bkerler/mtkclient/tree/118a000a83ea31c4f427fe5225abfe964546e05e
+            - Magisk מאת topjohnwu, ‏GPLv3: https://github.com/topjohnwu/Magisk (המהדורה הרשמית האחרונה בזמן הבנייה)
 
             ⚠️ גבו את המכשיר לפני הצריבה. האחריות על המשתמש.

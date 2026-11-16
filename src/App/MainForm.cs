@@ -16,7 +16,9 @@ namespace Ro2rwPc
         readonly Font fTitle = new Font("Segoe UI", 15f, FontStyle.Bold);
 
         ComboBox cmbProject;
-        Button btnNewProj, btnOpenDir, btnAddFiles, btnRefresh, btnRun, btnCancel, btnOpenEdited;
+        Button btnNewProj, btnOpenDir, btnAddFiles, btnRefresh, btnRun, btnCancel, btnOpenEdited, btnDump, btnDriver;
+        CheckBox cbSkipUserdata;
+        Label lblStatus;
         ListView lvFiles;
         Label lblProj;
         // RO2RW
@@ -56,6 +58,7 @@ namespace Ro2rwPc
             LoadProjects(null);
             Log("ברוך הבא! צור פרויקט (שם המכשיר), הוסף אליו את קבצי הרום, סמן מה לערוך ולחץ \"בצע עריכה\".", Color.LightGreen);
             Log("הקבצים הערוכים נשמרים בתיקייה \"ערוך\" שבתוך הפרויקט, עם אותם שמות. המקור לא משתנה.", Color.LightGreen);
+            Log("אפשר גם לשאוב רום מלא מהמכשיר (MTK) ישירות לתוך הפרויקט, בכפתור \"שאב רום מהמכשיר\".", Color.LightGreen);
         }
 
         // ------------------------------------------------------------ UI
@@ -65,7 +68,7 @@ namespace Ro2rwPc
             Controls.Add(new Label { Text = "RO2RW, Root עם Magisk, ביטול AVB והסרת Orange State - הכול על המחשב", AutoSize = true, Location = new Point(16, 42), ForeColor = Color.DimGray });
 
             // project bar
-            var gp = new GroupBox { Text = "פרויקט (מכשיר)", Location = new Point(12, 68), Size = new Size(976, 66) };
+            var gp = new GroupBox { Text = "פרויקט (מכשיר)", Location = new Point(12, 68), Size = new Size(976, 104) };
             cmbProject = new ComboBox { Location = new Point(14, 26), Size = new Size(250, 28), DropDownStyle = ComboBoxStyle.DropDownList };
             cmbProject.SelectedIndexChanged += (s, e) => { if (cmbProject.SelectedItem != null) OpenProject((string)cmbProject.SelectedItem); };
             btnNewProj = new Button { Text = "פרויקט חדש...", Location = new Point(274, 24), Size = new Size(130, 32) };
@@ -75,12 +78,18 @@ namespace Ro2rwPc
             btnOpenEdited = new Button { Text = "פתח \"ערוך\"", Location = new Point(530, 24), Size = new Size(110, 32) };
             btnOpenEdited.Click += (s, e) => { if (project != null) Process.Start("explorer.exe", "\"" + project.Edited + "\""); };
             lblProj = new Label { Location = new Point(650, 30), Size = new Size(316, 24), ForeColor = Color.DimGray, AutoEllipsis = true };
-            gp.Controls.AddRange(new Control[] { cmbProject, btnNewProj, btnOpenDir, btnOpenEdited, lblProj });
+            btnDump = new Button { Text = "⬇ שאב רום מהמכשיר (mtkclient)", Location = new Point(14, 62), Size = new Size(250, 32), Font = fBold };
+            btnDump.Click += (s, e) => DumpRom();
+            cbSkipUserdata = new CheckBox { Text = "בלי userdata", Location = new Point(274, 67), Size = new Size(120, 24), Checked = true };
+            btnDriver = new Button { Text = "דרייבר USB", Location = new Point(400, 62), Size = new Size(110, 32) };
+            btnDriver.Click += (s, e) => InstallDriver();
+            lblStatus = new Label { Location = new Point(520, 68), Size = new Size(446, 24), ForeColor = Color.DimGray, AutoEllipsis = true, RightToLeft = RightToLeft.No };
+            gp.Controls.AddRange(new Control[] { cmbProject, btnNewProj, btnOpenDir, btnOpenEdited, lblProj, btnDump, cbSkipUserdata, btnDriver, lblStatus });
             Controls.Add(gp);
 
             // files
-            var gf = new GroupBox { Text = "קבצי הרום בפרויקט (סמן מה לערוך)", Location = new Point(12, 140), Size = new Size(560, 330) };
-            lvFiles = new ListView { View = View.Details, CheckBoxes = true, FullRowSelect = true, Location = new Point(10, 24), Size = new Size(540, 256), RightToLeftLayout = true };
+            var gf = new GroupBox { Text = "קבצי הרום בפרויקט (סמן מה לערוך)", Location = new Point(12, 178), Size = new Size(560, 316) };
+            lvFiles = new ListView { View = View.Details, CheckBoxes = true, FullRowSelect = true, Location = new Point(10, 24), Size = new Size(540, 242), RightToLeftLayout = true };
             lvFiles.Columns.Add("קובץ", 150); lvFiles.Columns.Add("סוג", 90); lvFiles.Columns.Add("גודל", 80); lvFiles.Columns.Add("עריכה", 150); lvFiles.Columns.Add("ערוך", 50);
             lvFiles.ItemCheck += (s, e) =>
             {
@@ -88,32 +97,32 @@ namespace Ro2rwPc
                 if (pf == null || pf.Action == EditAction.None) e.NewValue = CheckState.Unchecked;
                 else pf.Selected = e.NewValue == CheckState.Checked;
             };
-            btnAddFiles = new Button { Text = "הוסף קבצים...", Location = new Point(10, 288), Size = new Size(130, 32) };
+            btnAddFiles = new Button { Text = "הוסף קבצים...", Location = new Point(10, 274), Size = new Size(130, 32) };
             btnAddFiles.Click += (s, e) => PickFiles();
-            btnRefresh = new Button { Text = "רענן", Location = new Point(148, 288), Size = new Size(80, 32) };
+            btnRefresh = new Button { Text = "רענן", Location = new Point(148, 274), Size = new Size(80, 32) };
             btnRefresh.Click += (s, e) => RefreshFiles();
-            var hint = new Label { Text = "אפשר גם לגרור קבצים לחלון", Location = new Point(236, 295), Size = new Size(300, 22), ForeColor = Color.DimGray };
+            var hint = new Label { Text = "אפשר גם לגרור קבצים לחלון", Location = new Point(236, 281), Size = new Size(300, 22), ForeColor = Color.DimGray };
             gf.Controls.AddRange(new Control[] { lvFiles, btnAddFiles, btnRefresh, hint });
             Controls.Add(gf);
 
             // settings tabs
-            var tabs = new TabControl { Location = new Point(582, 140), Size = new Size(406, 330), RightToLeftLayout = true };
+            var tabs = new TabControl { Location = new Point(582, 178), Size = new Size(406, 316), RightToLeftLayout = true };
             tabs.TabPages.Add(BuildRo2rwTab());
             tabs.TabPages.Add(BuildMagiskTab());
             tabs.TabPages.Add(BuildLkTab());
             Controls.Add(tabs);
 
             // run
-            btnRun = new Button { Text = "בצע עריכה", Location = new Point(12, 480), Size = new Size(200, 44), Font = new Font("Segoe UI", 12f, FontStyle.Bold), BackColor = Color.FromArgb(46, 125, 50), ForeColor = Color.White, FlatStyle = FlatStyle.Flat };
+            btnRun = new Button { Text = "בצע עריכה", Location = new Point(12, 502), Size = new Size(200, 44), Font = new Font("Segoe UI", 12f, FontStyle.Bold), BackColor = Color.FromArgb(46, 125, 50), ForeColor = Color.White, FlatStyle = FlatStyle.Flat };
             btnRun.Click += (s, e) => RunEdits();
-            btnCancel = new Button { Text = "ביטול", Location = new Point(222, 480), Size = new Size(100, 44), Enabled = false };
+            btnCancel = new Button { Text = "ביטול", Location = new Point(222, 502), Size = new Size(100, 44), Enabled = false };
             btnCancel.Click += (s, e) => { cancel = true; Log("מבטל...", Color.Khaki); };
-            prog = new ProgressBar { Location = new Point(334, 490), Size = new Size(654, 26), Maximum = 1000 };
+            prog = new ProgressBar { Location = new Point(334, 512), Size = new Size(654, 26), Maximum = 1000 };
             Controls.AddRange(new Control[] { btnRun, btnCancel, prog });
 
             log = new RichTextBox
             {
-                Location = new Point(12, 534), Size = new Size(976, 254), ReadOnly = true, BackColor = Color.FromArgb(24, 24, 28), ForeColor = Color.Gainsboro,
+                Location = new Point(12, 554), Size = new Size(976, 234), ReadOnly = true, BackColor = Color.FromArgb(24, 24, 28), ForeColor = Color.Gainsboro,
                 Font = new Font("Consolas", 10f), RightToLeft = RightToLeft.Yes, Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right
             };
             Controls.Add(log);
@@ -147,8 +156,8 @@ namespace Ro2rwPc
             cmbAbi.SelectedIndex = 0;
             cbKeepVerity = new CheckBox { Text = "השאר verity (KEEPVERITY)", Location = new Point(10, 48), Size = new Size(370, 24) };
             cbKeepEnc = new CheckBox { Text = "השאר הצפנה כפויה (KEEPFORCEENCRYPT)", Location = new Point(10, 74), Size = new Size(370, 24) };
-            lblMagisk = new Label { Location = new Point(10, 108), Size = new Size(376, 150), ForeColor = Color.DimGray };
-            var btnApk = new Button { Text = "בחר Magisk.apk אחר...", Location = new Point(10, 262), Size = new Size(180, 30) };
+            lblMagisk = new Label { Location = new Point(10, 104), Size = new Size(376, 140), ForeColor = Color.DimGray };
+            var btnApk = new Button { Text = "בחר Magisk.apk אחר...", Location = new Point(10, 248), Size = new Size(180, 30) };
             btnApk.Click += (s, e) => PickMagiskApk();
             t.Controls.AddRange(new Control[] { cmbAbi, cbKeepVerity, cbKeepEnc, lblMagisk, btnApk });
             UpdateMagiskLabel();
@@ -188,10 +197,11 @@ namespace Ro2rwPc
         {
             string apk = null;
             try { if (Directory.Exists(Project.ToolsDir)) apk = Directory.GetFiles(Project.ToolsDir, "*.apk").FirstOrDefault(f => Path.GetFileName(f).ToLowerInvariant().Contains("magisk")); } catch { }
-            lblMagisk.Text = (apk != null ? "Magisk: " + Path.GetFileName(apk) : "Magisk: יורד אוטומטית מ-GitHub בפעם הראשונה") +
+            bool builtin = System.Reflection.Assembly.GetExecutingAssembly().GetManifestResourceNames().Contains("Magisk.apk");
+            lblMagisk.Text = (apk != null ? "Magisk: " + Path.GetFileName(apk) + " (נבחר ידנית)" : builtin ? "Magisk: מובנה בתוכנה" : "Magisk: יורד אוטומטית מ-GitHub בפעם הראשונה") +
                 "\n\nה-boot או ה-init_boot נערכים על המחשב, כמו שאפליקציית Magisk עושה." +
                 "\nאחרי הצריבה מתקינים את אפליקציית Magisk בטלפון." +
-                "\n\nאם המכשיר 64 ביט עם מערכת 32 ביט, בחר armeabi-v7a.";
+                "\n\nה-ABI מזוהה אוטומטית מקובץ init שב-ramdisk.";
         }
 
         void PickMagiskApk()
@@ -227,7 +237,7 @@ namespace Ro2rwPc
         void SetBusy(bool busy)
         {
             if (InvokeRequired) { BeginInvoke(new Action(() => SetBusy(busy))); return; }
-            foreach (var b in new Control[] { btnRun, btnNewProj, btnAddFiles, btnRefresh, cmbProject, lvFiles }) b.Enabled = !busy;
+            foreach (var b in new Control[] { btnRun, btnNewProj, btnAddFiles, btnRefresh, cmbProject, lvFiles, btnDump, btnDriver }) b.Enabled = !busy;
             btnCancel.Enabled = busy;
             UseWaitCursor = busy;
         }
@@ -327,6 +337,72 @@ namespace Ro2rwPc
                 }
                 catch (Exception ex) { Log("שגיאה בהעתקה: " + ex.Message, Color.Tomato); }
                 finally { SetBusy(false); BeginInvoke(new Action(RefreshFiles)); }
+            }) { IsBackground = true };
+            worker.Start();
+        }
+
+        // ------------------------------------------------------------ dump
+        void SetStatus(string t)
+        {
+            if (InvokeRequired) { BeginInvoke(new Action(() => SetStatus(t))); return; }
+            lblStatus.Text = t;
+        }
+
+        void InstallDriver()
+        {
+            if (MtkClient.UsbDkInstalled)
+            {
+                Msg(this, "דרייבר UsbDk כבר מותקן במחשב.");
+                return;
+            }
+            SetBusy(true);
+            worker = new Thread(() =>
+            {
+                try { new MtkClient { Log = s => Log(s) }.InstallUsbDk(); }
+                catch (Exception ex) { Log("שגיאה: " + ex.Message, Color.Tomato); }
+                finally { SetBusy(false); }
+            }) { IsBackground = true };
+            worker.Start();
+        }
+
+        void DumpRom()
+        {
+            if (project == null) { Msg(this, "צור או בחר פרויקט קודם (שם המכשיר)."); return; }
+            if (!MtkClient.Bundled && !File.Exists(MtkClient.Exe)) { Msg(this, "mtkclient לא מובנה בגרסה הזו. הורד את הגרסה האחרונה מדף המהדורות.", MessageBoxIcon.Warning); return; }
+            if (!MtkClient.UsbDkInstalled)
+            {
+                var r = MessageBox.Show(this, "כדי ש-mtkclient יזהה את המכשיר צריך את דרייבר UsbDk, והוא לא מותקן.\n\nלהתקין עכשיו? (נדרשות הרשאות מנהל)", "RO2RW PC",
+                    MessageBoxButtons.YesNoCancel, MessageBoxIcon.Question, MessageBoxDefaultButton.Button1, MessageBoxOptions.RtlReading | MessageBoxOptions.RightAlign);
+                if (r == DialogResult.Cancel) return;
+                if (r == DialogResult.Yes) { InstallDriver(); return; }
+            }
+            var ok = MessageBox.Show(this,
+                "שאיבת רום מלא לפרויקט \"" + project.Name + "\":\n\n" +
+                "1. כבה את המכשיר לגמרי (והוצא את הכבל).\n" +
+                "2. לחץ אישור כאן.\n" +
+                "3. החזק את שני לחצני העוצמה (או עוצמה+) וחבר את הכבל.\n" +
+                "   (במכשירים מסוימים: עוצמה- בלבד)\n\n" +
+                "השאיבה יכולה לקחת זמן רב. אל תנתק את הכבל עד הסוף." +
+                (cbSkipUserdata.Checked ? "\n\nמחיצת userdata (המידע האישי) לא תישאב." : "\n\n! userdata תישאב - זה גדול מאוד ומכיל מידע אישי."),
+                "שאיבת רום", MessageBoxButtons.OKCancel, MessageBoxIcon.Information, MessageBoxDefaultButton.Button1, MessageBoxOptions.RtlReading | MessageBoxOptions.RightAlign);
+            if (ok != DialogResult.OK) return;
+            cancel = false;
+            SetBusy(true);
+            var proj = project; bool skip = cbSkipUserdata.Checked;
+            worker = new Thread(() =>
+            {
+                var sw = Stopwatch.StartNew();
+                try
+                {
+                    Log("");
+                    Log("▶ שאיבת רום עם mtkclient - ממתין למכשיר במצב BROM...");
+                    var mc = new MtkClient { Log = s => Log(s), Status = SetStatus, Cancelled = () => cancel };
+                    int n = mc.DumpProject(proj, skip);
+                    Log(string.Format("✔ נשאבו {0} מחיצות לתוך הפרויקט ({1})", n, sw.Elapsed.ToString(@"hh\:mm\:ss")));
+                }
+                catch (OperationCanceledException) { Log("בוטל.", Color.Khaki); }
+                catch (Exception ex) { Log("✖ " + ex.Message); }
+                finally { SetStatus(""); SetBusy(false); BeginInvoke(new Action(RefreshFiles)); }
             }) { IsBackground = true };
             worker.Start();
         }

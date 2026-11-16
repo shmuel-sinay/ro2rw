@@ -9,7 +9,7 @@
     <PlatformTarget>AnyCPU</PlatformTarget>
     <Prefer32Bit>false</Prefer32Bit>
     <ApplicationManifest>App\app.manifest</ApplicationManifest>
-    <Version>1.1.0</Version>
+    <Version>1.2.0</Version>
     <Product>RO2RW PC</Product>
     <Description>Converts Android super.img partitions to read-write ext4</Description>
     <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
@@ -22,6 +22,12 @@
   <ItemGroup>
     <Reference Include="System.IO.Compression" />
     <Reference Include="System.IO.Compression.FileSystem" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="res\mtk.exe" LogicalName="mtk.exe" Condition="Exists('res\mtk.exe')" />
+    <EmbeddedResource Include="res\Magisk.apk" LogicalName="Magisk.apk" Condition="Exists('res\Magisk.apk')" />
+    <EmbeddedResource Include="res\Magisk.version" LogicalName="Magisk.version" Condition="Exists('res\Magisk.version')" />
+    <EmbeddedResource Include="res\mtkclient-LICENSE.txt" LogicalName="mtkclient-LICENSE.txt" Condition="Exists('res\mtkclient-LICENSE.txt')" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />

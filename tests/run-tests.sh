@@ -58,6 +58,10 @@ mkdir -p apk/lib/arm64-v8a apk/assets
 head -c 300000 /dev/urandom > apk/lib/arm64-v8a/libmagiskinit.so
 head -c 900000 /dev/urandom > apk/lib/arm64-v8a/libmagisk.so
 head -c 50000 /dev/urandom > apk/lib/arm64-v8a/libinit-ld.so
+mkdir -p apk/lib/armeabi-v7a
+head -c 200000 /dev/urandom > apk/lib/armeabi-v7a/libmagiskinit.so
+head -c 700000 /dev/urandom > apk/lib/armeabi-v7a/libmagisk.so
+head -c 40000 /dev/urandom > apk/lib/armeabi-v7a/libinit-ld.so
 printf 'add 0644 overlay.d/sbin/magisk.xz magisk.xz\nadd 0644 overlay.d/sbin/init-ld.xz\necho VENDORBOOT\n' > apk/assets/boot_patch.sh
 (cd apk && python3 -c "
 import zipfile,os
@@ -77,6 +81,18 @@ for spec in "v2gz:2 gzip mtk avb" "v4lz4:4 lz4" "v0raw:0 raw" "v1lz4mtk:1 lz4 mt
     echo "ok   magisk-$n"
   else echo "FAIL magisk-$n"; fail=1; fi
 done
+# 32-bit userspace (ARM ELF init) must get armeabi-v7a binaries even with a 64-bit kernel
+python3 "$ROOT/tests/mkboot.py" v2arm32.img 2 gzip mtk avb arm32
+if $T magisk v2arm32.img Magisk-test.apk v2arm32.p.img >/dev/null && python3 "$ROOT/tests/checkboot.py" v2arm32.p.img >/dev/null \
+   && cmp -s x/init apk/lib/armeabi-v7a/libmagiskinit.so && cmp -s <(xz -dc x/overlay.d/sbin/magisk.xz) apk/lib/armeabi-v7a/libmagisk.so; then
+  echo "ok   magisk-abi-arm32"; else echo "FAIL magisk-abi-arm32"; fail=1; fi
+# only a real LK (MTK header name "lk") is classified as LK
+python3 -c "
+import struct,os
+for name,fn in ((b'lk','lk_hdr.bin'),(b'logo','logo.bin'),(b'md1rom','md1img.img'),(b'tinysys-scp','scp.img')):
+    open(fn,'wb').write(struct.pack('<II',0x58881688,4000)+name.ljust(32,b'\0')+os.urandom(4000))"
+c1=$($T classify lk_hdr.bin); c2=$($T classify logo.bin); c3=$($T classify md1img.img); c4=$($T classify scp.img)
+[ "$c1" = "lk|Lk" ] && [ "$c2" = "|None" ] && [ "$c3" = "|None" ] && [ "$c4" = "|None" ] && echo "ok   lk-classify" || { echo "FAIL lk-classify: $c1 $c2 $c3 $c4"; fail=1; }
 python3 -c "
 import os,struct
 d=bytearray(struct.pack('<II',0x58881688,0)+os.urandom(5000))

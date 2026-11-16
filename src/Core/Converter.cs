@@ -101,6 +101,9 @@ namespace Ro2rwPc
                     else if (Ext4Reader.Detect(s)) pi.Fs = "EXT4";
                     else pi.Fs = "RAW";
                     pi.Convert = pi.Fs == "EROFS" || pi.Fs == "EXT4";
+                    // default: only the active (_a) slot is converted; _b leftovers are copied as-is
+                    if (p.Name.EndsWith("_b") && Md.Partitions.Any(x => x.Name == p.Name.Substring(0, p.Name.Length - 2) + "_a" && x.SizeBytes > 0))
+                        pi.Convert = false;
                 }
                 Parts.Add(pi);
             }

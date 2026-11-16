@@ -103,6 +103,23 @@ static class TestMain
                         Console.WriteLine("ok=" + ok + "/" + files.Count);
                         return ok == files.Count ? 0 : 1;
                     }
+                case "dump":
+                    {
+                        var proj = new Project { Name = "Test_Device", Root = a[1] };
+                        Directory.CreateDirectory(proj.Edited);
+                        var mc = new MtkClient { Log = Console.WriteLine, Status = st => Console.WriteLine("[status] " + st) };
+                        int n = mc.DumpProject(proj, true);
+                        Console.WriteLine("moved=" + n);
+                        foreach (var f in proj.Scan()) Console.WriteLine(f.Name + " | " + f.Kind + " | " + f.Action + " | sel=" + f.Selected);
+                        return 0;
+                    }
+                case "classify":
+                    {
+                        var pf = new ProjectFile { Path = a[1], Size = new FileInfo(a[1]).Length };
+                        Project.Classify(pf);
+                        Console.WriteLine(pf.Kind + "|" + pf.Action);
+                        return 0;
+                    }
                 case "ls":
                     using (var src = new RawFileSource(a[1]))
                     {
