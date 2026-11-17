@@ -154,6 +154,30 @@ if [ -f fe_proj/gpt.bin ] && [ -f fe_proj/boot_a.img ] && ls fe_proj/*_scatter.t
 cp v2gz.img fe_ed/boot_a.img; cp vbmeta.img fe_ed/vbmeta_a.img; cp ../super.sparse.img fe_ed/super.img
 $T fastflash "$MG/fe_ed" "$MG/fl/gpt.bin" >/dev/null 2>&1
 if [ "$(cat fe_nflash.txt 2>/dev/null)" = 3 ] && [ ! -d fe_ed/_fastflash ] && [ ! -d fe_ed/_flash_tmp ]; then echo "ok   fast-flash"; else echo "FAIL fast-flash"; fail=1; fi
+# SP Flash Tool console config: only is_download=true roms, download-only (no <format> tag)
+mkdir -p spx; printf '%s' '- general:
+    - platform: MT6765
+      storage: EMMC
+- partition_index: SYS0
+  partition_name: preloader
+  file_name: NONE
+  is_download: false
+- partition_index: SYS1
+  partition_name: boot
+  file_name: boot.img
+  is_download: true
+- partition_index: SYS2
+  partition_name: vbmeta
+  file_name: vbmeta.img
+  is_download: true
+' > spx/s.txt
+echo b > spx/boot.img; echo v > spx/vbmeta.img; echo DA > spx/da.bin
+$T spconfig "$PWD/spx/s.txt" "$PWD/spx" "$PWD/spx/da.bin" >/dev/null 2>&1
+if [ -f spx/sp_flash_config.xml ] \
+   && [ "$(grep -c '<rom ' spx/sp_flash_config.xml)" = 2 ] \
+   && grep -q 'da-download-all' spx/sp_flash_config.xml \
+   && ! grep -qE '<format' spx/sp_flash_config.xml \
+   && ! grep -q 'preloader' spx/sp_flash_config.xml; then echo "ok   sp-config"; else echo "FAIL sp-config"; fail=1; fi
 # WiFi removal: delete /vendor/bin/hw/wpa_supplicant from super, keep XML, save backup
 mkdir -p wsrc/bin/hw wsrc/etc/permissions
 printf 'ELF-WPA' > wsrc/bin/hw/wpa_supplicant

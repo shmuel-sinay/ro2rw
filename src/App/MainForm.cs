@@ -137,7 +137,7 @@ namespace Ro2rwPc
             btnRun = new Button { Text = "בצע עריכה", Location = new Point(150, 502), Size = new Size(160, 44), Font = new Font("Segoe UI", 12f, FontStyle.Bold), BackColor = Color.FromArgb(46, 125, 50), ForeColor = Color.White, FlatStyle = FlatStyle.Flat };
             btnRun.Click += (s, e) => RunEdits();
             btnSp = new Button { Text = "📲 SP Flash Tool", Location = new Point(318, 502), Size = new Size(160, 44), Font = new Font("Segoe UI", 11f, FontStyle.Bold), BackColor = Color.FromArgb(21, 101, 192), ForeColor = Color.White, FlatStyle = FlatStyle.Flat };
-            btnSp.Click += (s, e) => OpenInSpTool();
+            btnSp.Click += (s, e) => SpFlashMenu();
             btnFlash = new Button { Text = "⬆ צרוב (USB)", Location = new Point(484, 502), Size = new Size(120, 44), Font = new Font("Segoe UI", 10f, FontStyle.Bold), BackColor = Color.FromArgb(198, 40, 40), ForeColor = Color.White, FlatStyle = FlatStyle.Flat };
             btnFlash.Click += (s, e) => FlashBack(null, true, null);
             btnCancel = new Button { Text = "ביטול", Location = new Point(610, 502), Size = new Size(80, 44), Enabled = false };
@@ -583,6 +583,7 @@ namespace Ro2rwPc
             mDev.DropDownItems.Add("צרוב חזרה את תיקיית \"ערוך\"...", null, (s, e) => FlashBack(null, true, null));
             mDev.DropDownItems.Add("צרוב קבצים נבחרים...", null, (s, e) => FlashPickFiles());
             mDev.DropDownItems.Add("פתח ב-SP Flash Tool (צריבה ידנית)...", null, (s, e) => OpenInSpTool());
+            mDev.DropDownItems.Add("SP Flash Tool - אוטומטי (ניסיוני)...", null, (s, e) => RunSpAuto());
             mDev.DropDownItems.Add("מדריך SP Flash Tool (צריבה + גיבוי)...", null, (s, e) => ShowSpGuide());
             mDev.DropDownItems.Add(new ToolStripSeparator());
             mDev.DropDownItems.Add("התקן דרייבר USB (UsbDk)", null, (s, e) => InstallDriver());
@@ -1076,7 +1077,81 @@ namespace Ro2rwPc
             b.Cursor = Cursors.Hand;
         }
 
-                // ------------------------------------------------------------ SP Flash Tool (manual flashing)
+                // ------------------------------------------------------------ SP Flash Tool
+        void SpFlashMenu()
+        {
+            var r = MessageBox.Show(this,
+                "איך לצרוב עם SP Flash Tool?\n\n" +
+                "כן = אוטומטי: RO2RW יפעיל את SP Flash Tool וירכיב את ההורדה לבד (ניסיוני).\n" +
+                "לא = ידני: נפתח את SP Flash Tool ותלחץ Download בעצמך.\n" +
+                "ביטול = חזרה.",
+                "SP Flash Tool", MessageBoxButtons.YesNoCancel, MessageBoxIcon.Question,
+                MessageBoxDefaultButton.Button1, MessageBoxOptions.RtlReading | MessageBoxOptions.RightAlign);
+            if (r == DialogResult.Yes) RunSpAuto();
+            else if (r == DialogResult.No) OpenInSpTool();
+        }
+
+        void RunSpAuto()
+        {
+            if (project == null) { Msg(this, "צור או בחר פרויקט קודם."); return; }
+            // 1. scatter
+            string scatter = Directory.Exists(project.Edited) ? Directory.GetFiles(project.Edited, "*scatter*.txt").OrderBy(x => x).FirstOrDefault() : null;
+            if (scatter == null) { try { EditedScatter.Create(project, x => Log(x)); } catch { } scatter = Directory.Exists(project.Edited) ? Directory.GetFiles(project.Edited, "*scatter*.txt").OrderBy(x => x).FirstOrDefault() : null; }
+            if (scatter == null) { Msg(this, "לא נמצא scatter בתיקייה \"ערוך\". בצע עריכה, או הוסף את ה-scatter של הקושחה לפרויקט.", MessageBoxIcon.Warning); return; }
+            // 2. flash_tool.exe
+            if (string.IsNullOrEmpty(sptoolPath) || !File.Exists(sptoolPath))
+            {
+                using (var d = new OpenFileDialog { Title = "בחר את flash_tool.exe", Filter = "SP Flash Tool|flash_tool*.exe;FlashTool*.exe|כל הקבצים|*.exe" })
+                { if (d.ShowDialog(this) != DialogResult.OK) return; sptoolPath = d.FileName; }
+            }
+            // 3. roms
+            List<SpFlashTool.Rom> roms;
+            try { roms = SpFlashTool.EnabledRoms(scatter, project.Edited); } catch (Exception ex) { Msg(this, ex.Message, MessageBoxIcon.Error); return; }
+            if (roms.Count == 0) { Msg(this, "אין מחיצות מסומנות לצריבה ב-scatter.", MessageBoxIcon.Warning); return; }
+            // 4. DA
+            string da = SpFlashTool.FindDa(sptoolPath);
+            if (da == null)
+            {
+                if (!Ui.Ask(this, "לא נמצא קובץ DA (MTK_AllInOne_DA.bin) ליד flash_tool.exe.\nלבחור אותו? (בדרך כלל בתיקיית SP Flash Tool)")) return;
+                using (var d = new OpenFileDialog { Title = "בחר MTK_AllInOne_DA.bin", Filter = "DA|*.bin|כל הקבצים|*.*" })
+                { if (d.ShowDialog(this) != DialogResult.OK) return; da = d.FileName; }
+            }
+            // 5. platform/storage from scatter
+            string stext = File.ReadAllText(scatter);
+            var pm = System.Text.RegularExpressions.Regex.Match(stext, @"platform:\s*(\S+)");
+            string platform = pm.Success ? pm.Groups[1].Value : null;
+            bool ufs = System.Text.RegularExpressions.Regex.IsMatch(stext, @"storage:\s*UFS", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            // 6. build config
+            string cfg;
+            try { cfg = SpFlashTool.BuildConfig(project.Edited, scatter, da, platform, ufs, roms, null); }
+            catch (Exception ex) { Msg(this, ex.Message, MessageBoxIcon.Error); return; }
+            // 7. confirm
+            if (!Ui.Ask(this,
+                "SP Flash Tool תופעל אוטומטית ותצרוב (Download Only, בלי format):\n" +
+                string.Join("\n", roms.Select(x => "   • " + x.Name)) + "\n\n" +
+                "DA: " + Path.GetFileName(da) + "\n" +
+                "⚠️ ניסיוני, ותלוי בגרסת SP שלך. גבה את המכשיר. מומלץ לנסות קודם עם vbmeta בלבד.\n\n" +
+                "להמשיך?", MessageBoxIcon.Warning)) return;
+            cancel = false; SetBusy(true); SetStatus("");
+            string ft = sptoolPath;
+            worker = new Thread(() =>
+            {
+                try
+                {
+                    Log(""); Log("▶ SP Flash Tool - הפעלה אוטומטית. חבר את המכשיר כבוי כשתתבקש.", Color.DeepSkyBlue);
+                    var runner = new MtkClient { Log = s => Log(s), Status = SetStatus, Cancelled = () => cancel };
+                    if (!SpFlashTool.SupportsConsole(ft, runner))
+                        Log("  ! לא בטוח שגרסת SP שלך תומכת במצב אוטומטי. אם זה נכשל, השתמש ב-SP ידני.", Color.Khaki);
+                    SpFlashTool.Run(ft, cfg, null, runner);
+                    Log("✔ SP Flash Tool סיימה. בדוק שהמכשיר עלה.", Color.LightGreen);
+                }
+                catch (OperationCanceledException) { Log("בוטל.", Color.Khaki); }
+                catch (Exception ex) { Log("✖ " + ex.Message); Log("  אפשר תמיד לצרוב ידנית: כפתור SP Flash Tool ← ידני.", Color.Khaki); }
+                finally { SetStatus(""); SetBusy(false); }
+            }) { IsBackground = true };
+            worker.Start();
+        }
+
         void OpenInSpTool()
         {
             // 1. decide which folder holds the scatter + images

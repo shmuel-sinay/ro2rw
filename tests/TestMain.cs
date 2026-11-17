@@ -181,6 +181,15 @@ static class TestMain
                         fl.Flash(items, a[1], false);
                         return 0;
                     }
+                case "spconfig":
+                    {
+                        // spconfig <scatter> <filesDir> <daFile>
+                        var roms = SpFlashTool.EnabledRoms(a[1], a[2]);
+                        foreach (var r in roms) Console.WriteLine("ROM " + r.Index + " " + r.Name + " -> " + Path.GetFileName(r.File));
+                        var cfg = SpFlashTool.BuildConfig(a[2], a[1], a[3], "MT6765", false, roms, null);
+                        Console.WriteLine("CONFIG=" + cfg);
+                        return 0;
+                    }
                 case "ls":
                     using (var src = new RawFileSource(a[1]))
                     {
