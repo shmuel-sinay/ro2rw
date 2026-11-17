@@ -604,6 +604,7 @@ namespace Ro2rwPc
             mDev.DropDownItems.Add(new ToolStripSeparator());
             mDev.DropDownItems.Add("התקן דרייבר USB (UsbDk)", null, (s, e) => InstallDriver());
             mDev.DropDownItems.Add("הורד SP Flash Tool (אתר רשמי)", null, (s, e) => { try { Process.Start(new ProcessStartInfo("https://spflashtool.com/") { UseShellExecute = true }); } catch { } });
+            mDev.DropDownItems.Add("התקן SP Flash Tool לתוך התוכנה...", null, (s, e) => InstallSpIntoTool());
             mDev.DropDownItems.Add(new ToolStripSeparator());
             var mEng = new ToolStripMenuItem("מנוע צריבה / שאיבה");
             miEngMtk = new ToolStripMenuItem("mtkclient (בטוח, ברירת מחדל)", null, (s, e) => SetEngine(MtkEngine.Mtkclient)) { Checked = true };
@@ -1095,6 +1096,57 @@ namespace Ro2rwPc
         }
 
                 // ------------------------------------------------------------ SP Flash Tool
+        string SpToolDir { get { return Path.Combine(Project.ToolsDir, "SPFlashTool"); } }
+
+        string ResolveSpTool()
+        {
+            if (!string.IsNullOrEmpty(sptoolPath) && File.Exists(sptoolPath)) return sptoolPath;
+            if (Directory.Exists(SpToolDir))
+            {
+                var f = Directory.GetFiles(SpToolDir, "flash_tool*.exe").FirstOrDefault()
+                     ?? Directory.GetFiles(SpToolDir, "*.exe").FirstOrDefault(x => Path.GetFileName(x).ToLowerInvariant().Contains("flash"));
+                if (f != null) { sptoolPath = f; return f; }
+            }
+            return null;
+        }
+
+        void InstallSpIntoTool()
+        {
+            string exe;
+            using (var d = new OpenFileDialog { Title = "בחר את flash_tool.exe שבתיקיית SP Flash Tool שלך", Filter = "SP Flash Tool|flash_tool*.exe;FlashTool*.exe|כל הקבצים|*.exe" })
+            { if (d.ShowDialog(this) != DialogResult.OK) return; exe = d.FileName; }
+            string srcDir = Path.GetDirectoryName(exe);
+            if (!Ui.Ask(this, "להעתיק את כל תיקיית SP Flash Tool לתוך התוכנה?\n\nמ: " + srcDir + "\nאל: " + SpToolDir + "\n\nכך SP ילווה את התוכנה ותמיד יעבוד מתוכה.")) return;
+            cancel = false; SetBusy(true);
+            worker = new Thread(() =>
+            {
+                try
+                {
+                    Log("מעתיק את SP Flash Tool לתוך התוכנה...");
+                    CopyDir(srcDir, SpToolDir, () => cancel, f => SetStatus("מעתיק " + f));
+                    sptoolPath = Path.Combine(SpToolDir, Path.GetFileName(exe));
+                    Log("✔ SP Flash Tool הועתק לתוכנה: " + SpToolDir, Color.LightGreen);
+                }
+                catch (OperationCanceledException) { Log("בוטל.", Color.Khaki); }
+                catch (Exception ex) { Log("✖ " + ex.Message); }
+                finally { SetStatus(""); SetBusy(false); }
+            }) { IsBackground = true };
+            worker.Start();
+        }
+
+        static void CopyDir(string src, string dst, Func<bool> cancelled, Action<string> status)
+        {
+            Directory.CreateDirectory(dst);
+            foreach (var dir in Directory.GetDirectories(src, "*", SearchOption.AllDirectories))
+                Directory.CreateDirectory(dir.Replace(src, dst));
+            foreach (var f in Directory.GetFiles(src, "*", SearchOption.AllDirectories))
+            {
+                if (cancelled != null && cancelled()) throw new OperationCanceledException();
+                if (status != null) status(Path.GetFileName(f));
+                File.Copy(f, f.Replace(src, dst), true);
+            }
+        }
+
         void SpFlashMenu()
         {
             var r = MessageBox.Show(this,
@@ -1115,10 +1167,10 @@ namespace Ro2rwPc
             string scatter = Directory.Exists(project.Edited) ? Directory.GetFiles(project.Edited, "*scatter*.txt").OrderBy(x => x).FirstOrDefault() : null;
             if (scatter == null) { try { EditedScatter.Create(project, x => Log(x)); } catch { } scatter = Directory.Exists(project.Edited) ? Directory.GetFiles(project.Edited, "*scatter*.txt").OrderBy(x => x).FirstOrDefault() : null; }
             if (scatter == null) { Msg(this, "לא נמצא scatter בתיקייה \"ערוך\". בצע עריכה, או הוסף את ה-scatter של הקושחה לפרויקט.", MessageBoxIcon.Warning); return; }
-            // 2. flash_tool.exe
-            if (string.IsNullOrEmpty(sptoolPath) || !File.Exists(sptoolPath))
+            // 2. flash_tool.exe (from tools/SPFlashTool, remembered path, or pick)
+            if (ResolveSpTool() == null)
             {
-                using (var d = new OpenFileDialog { Title = "בחר את flash_tool.exe", Filter = "SP Flash Tool|flash_tool*.exe;FlashTool*.exe|כל הקבצים|*.exe" })
+                using (var d = new OpenFileDialog { Title = "בחר את flash_tool.exe (או: מכשיר ← התקן SP לתוך התוכנה)", Filter = "SP Flash Tool|flash_tool*.exe;FlashTool*.exe|כל הקבצים|*.exe" })
                 { if (d.ShowDialog(this) != DialogResult.OK) return; sptoolPath = d.FileName; }
             }
             // 3. roms
@@ -1149,17 +1201,17 @@ namespace Ro2rwPc
                 "DA: " + Path.GetFileName(da) + "\n" +
                 "⚠️ ניסיוני, ותלוי בגרסת SP שלך. גבה את המכשיר. מומלץ לנסות קודם עם vbmeta בלבד.\n\n" +
                 "להמשיך?", MessageBoxIcon.Warning)) return;
+            string com = Prompt("מספר COM של המכשיר (אופציונלי - השאר ריק לזיהוי אוטומטי, למשל COM40):", "SP Flash Tool");
+            if (com != null) com = com.Trim();
             cancel = false; SetBusy(true); SetStatus("");
             string ft = sptoolPath;
             worker = new Thread(() =>
             {
                 try
                 {
-                    Log(""); Log("▶ SP Flash Tool - הפעלה אוטומטית. חבר את המכשיר כבוי כשתתבקש.", Color.DeepSkyBlue);
+                    Log(""); Log("▶ SP Flash Tool - הפעלה אוטומטית (v5 + console). חבר את המכשיר כבוי כשתתבקש.", Color.DeepSkyBlue);
                     var runner = new MtkClient { Log = s => Log(s), Status = SetStatus, Cancelled = () => cancel };
-                    if (!SpFlashTool.SupportsConsole(ft, runner))
-                        Log("  ! לא בטוח שגרסת SP שלך תומכת במצב אוטומטי. אם זה נכשל, השתמש ב-SP ידני.", Color.Khaki);
-                    SpFlashTool.Run(ft, cfg, null, runner);
+                    SpFlashTool.Run(ft, cfg, string.IsNullOrEmpty(com) ? null : com, runner);
                     Log("✔ SP Flash Tool סיימה. בדוק שהמכשיר עלה.", Color.LightGreen);
                 }
                 catch (OperationCanceledException) { Log("בוטל.", Color.Khaki); }
@@ -1196,9 +1248,9 @@ namespace Ro2rwPc
                 return;
             }
             // 3. locate flash_tool.exe (ask once, remember)
-            if (string.IsNullOrEmpty(sptoolPath) || !File.Exists(sptoolPath))
+            if (ResolveSpTool() == null)
             {
-                if (!Ui.Ask(this, "SP Flash Tool אינה מובנית (היא תוכנה סגורה). יש להתקין אותה בעצמך מהאתר הרשמי.\n\nלבחור עכשיו את הקובץ flash_tool.exe שהתקנת?")) return;
+                if (!Ui.Ask(this, "SP Flash Tool אינה מובנית (היא תוכנה סגורה, אי אפשר לארוז אותה). יש להתקין אותה בעצמך (תפריט מכשיר ← הורד SP Flash Tool), או להעתיק אותה לתוך התוכנה (מכשיר ← התקן SP Flash Tool לתוך התוכנה).\n\nלבחור עכשיו את הקובץ flash_tool.exe?")) return;
                 using (var d = new OpenFileDialog { Title = "בחר את flash_tool.exe", Filter = "SP Flash Tool|flash_tool*.exe;FlashTool*.exe|כל הקבצים|*.exe" })
                 {
                     if (d.ShowDialog(this) != DialogResult.OK) return;
