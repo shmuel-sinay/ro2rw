@@ -5,7 +5,7 @@ namespace Ro2rwPc
 {
     static class Program
     {
-        public const string Version = "2.7.0";
+        public const string Version = "2.7.1";
 
         [STAThread]
         static void Main(string[] args)

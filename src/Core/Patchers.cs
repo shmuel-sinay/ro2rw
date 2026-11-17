@@ -202,6 +202,35 @@ namespace Ro2rwPc
             return dest;
         }
 
+        /// <summary>Downloads a specific Magisk version (e.g. "26.4" or "v26.4") from GitHub into toolsDir and returns its path.</summary>
+        public static string DownloadApkVersion(string toolsDir, string version, Action<string> log)
+        {
+            Directory.CreateDirectory(toolsDir);
+            string tag = version.Trim();
+            if (tag.Length == 0) throw new ArgumentException("לא הוזנה גרסה");
+            if (!tag.StartsWith("v", StringComparison.OrdinalIgnoreCase)) tag = "v" + tag;
+            try { ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls12; } catch { }
+            log("  מוריד Magisk " + tag + " מ-GitHub...");
+            string json;
+            using (var wc = new WebClient())
+            {
+                wc.Headers.Add("User-Agent", "RO2RW-PC");
+                try { json = wc.DownloadString("https://api.github.com/repos/topjohnwu/Magisk/releases/tags/" + tag); }
+                catch (WebException) { throw new IOException("לא נמצאה גרסת Magisk בשם " + tag + ". בדוק את מספר הגרסה (למשל 26.4) בדף המהדורות של Magisk."); }
+            }
+            var m = Regex.Match(json, "\"browser_download_url\"\\s*:\\s*\"([^\"]+/Magisk-v[^\"]+\\.apk)\"");
+            if (!m.Success) throw new IOException("לא נמצא קובץ apk במהדורת " + tag);
+            string url = m.Groups[1].Value;
+            string dest = Path.Combine(toolsDir, url.Substring(url.LastIndexOf('/') + 1));
+            using (var wc = new WebClient()) { wc.Headers.Add("User-Agent", "RO2RW-PC"); wc.DownloadFile(url, dest + ".part"); }
+            if (File.Exists(dest)) File.Delete(dest);
+            File.Move(dest + ".part", dest);
+            // make it the newest apk so FindOrDownloadApk picks it
+            File.SetLastWriteTimeUtc(dest, DateTime.UtcNow);
+            log("  נבחר: " + Path.GetFileName(dest));
+            return dest;
+        }
+
         static byte[] ZipGet(ZipArchive z, string name)
         {
             var e = z.GetEntry(name);

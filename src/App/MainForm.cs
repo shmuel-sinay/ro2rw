@@ -192,7 +192,9 @@ namespace Ro2rwPc
             lblMagisk = new Label { Location = new Point(10, 156), Size = new Size(376, 88), ForeColor = Color.DimGray };
             var btnApk = new Button { Text = "בחר Magisk.apk אחר...", Location = new Point(10, 248), Size = new Size(180, 30) };
             btnApk.Click += (s, e) => PickMagiskApk();
-            t.Controls.AddRange(new Control[] { cmbAbi, cbKeepVerity, cbKeepEnc, cbRecovery, cbPatchVbFlag, lblMagisk, btnApk });
+            var btnVer = new Button { Text = "הורד גרסה (למשל 26)...", Location = new Point(196, 248), Size = new Size(190, 30) };
+            btnVer.Click += (s, e) => DownloadMagiskVersion();
+            t.Controls.AddRange(new Control[] { cmbAbi, cbKeepVerity, cbKeepEnc, cbRecovery, cbPatchVbFlag, lblMagisk, btnApk, btnVer });
             UpdateMagiskLabel();
             return t;
         }
@@ -242,6 +244,20 @@ namespace Ro2rwPc
             lblMagisk.Text = (apk != null ? "Magisk: " + Path.GetFileName(apk) + " (נבחר ידנית)" : builtin ? "Magisk: מובנה בתוכנה" : "Magisk: יורד אוטומטית מ-GitHub בפעם הראשונה") +
                 "\nהעריכה על המחשב זהה לאפליקציית Magisk. אחרי הצריבה מתקינים את האפליקציה." +
                 "\n\nה-ABI מזוהה אוטומטית מקובץ init שב-ramdisk.";
+        }
+
+        void DownloadMagiskVersion()
+        {
+            string v = Prompt("איזו גרסת Magisk להוריד? (למשל 26.4)", "הורדת Magisk");
+            if (string.IsNullOrWhiteSpace(v)) return;
+            SetBusy(true);
+            worker = new Thread(() =>
+            {
+                try { MagiskPatcher.DownloadApkVersion(Project.ToolsDir, v, s => Log(s)); Log("✔ גרסת Magisk מוכנה. היא תשמש בעריכת boot/init_boot.", Color.LightGreen); }
+                catch (Exception ex) { Log("✖ " + ex.Message); }
+                finally { SetBusy(false); BeginInvoke(new Action(UpdateMagiskLabel)); }
+            }) { IsBackground = true };
+            worker.Start();
         }
 
         void PickMagiskApk()
@@ -587,6 +603,7 @@ namespace Ro2rwPc
             mDev.DropDownItems.Add("מדריך SP Flash Tool (צריבה + גיבוי)...", null, (s, e) => ShowSpGuide());
             mDev.DropDownItems.Add(new ToolStripSeparator());
             mDev.DropDownItems.Add("התקן דרייבר USB (UsbDk)", null, (s, e) => InstallDriver());
+            mDev.DropDownItems.Add("הורד SP Flash Tool (אתר רשמי)", null, (s, e) => { try { Process.Start(new ProcessStartInfo("https://spflashtool.com/") { UseShellExecute = true }); } catch { } });
             mDev.DropDownItems.Add(new ToolStripSeparator());
             var mEng = new ToolStripMenuItem("מנוע צריבה / שאיבה");
             miEngMtk = new ToolStripMenuItem("mtkclient (בטוח, ברירת מחדל)", null, (s, e) => SetEngine(MtkEngine.Mtkclient)) { Checked = true };
