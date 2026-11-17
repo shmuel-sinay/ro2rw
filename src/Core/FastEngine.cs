@@ -16,6 +16,11 @@ namespace Ro2rwPc
     public static class FastEngine
     {
         public static MtkEngine Selected = MtkEngine.Mtkclient;
+        /// <summary>Fast engine over the MTK VCOM serial COM port (no UsbDk). Works where only SP's driver binds.</summary>
+        public static bool Serial = false;
+        public static string Com = null;   // optional forced COM port, e.g. "COM40"
+
+        static string SerialArgs { get { return Serial ? " --serial" + (string.IsNullOrEmpty(Com) ? "" : " --com " + Com) : ""; } }
 
         public static string Dir { get { return Path.Combine(Project.ToolsDir, "mtkflash"); } }
         public static string Exe { get { return Path.Combine(Dir, "mtkflash.exe"); } }
@@ -70,7 +75,7 @@ namespace Ro2rwPc
             if (Directory.Exists(tmp)) try { Directory.Delete(tmp, true); } catch { }
             Directory.CreateDirectory(tmp);
             var cap = new StringBuilder();
-            string args = "dumpall --da \"" + Da + "\" --out \"" + tmp + "\" --no-reboot" + (skipUserdata ? " --skip userdata" : "");
+            string args = "dumpall --da \"" + Da + "\" --out \"" + tmp + "\" --no-reboot" + (skipUserdata ? " --skip userdata" : "") + SerialArgs;
             int rc = Proc(log, status, cancelled).RunExe(Exe, args, proj.Root, cap, "mtkflash");
             try { File.WriteAllText(Path.Combine(proj.Root, "mtkflash_log.txt"), cap.ToString(), new UTF8Encoding(true)); } catch { }
             string gpt = Path.Combine(tmp, "gpt.bin");
@@ -102,7 +107,7 @@ namespace Ro2rwPc
             string scatter = ScatterWriter.Write(scatterDir, "fastflash", g, null, g.SectorSize == 4096,
                 name => byName.ContainsKey(name) ? fileByPart[name] : null);
             var cap = new StringBuilder();
-            string args = "flash --scatter \"" + scatter + "\" --da \"" + Da + "\"" + (reboot ? "" : " --no-reboot");
+            string args = "flash --scatter \"" + scatter + "\" --da \"" + Da + "\"" + (reboot ? "" : " --no-reboot") + SerialArgs;
             int rc = Proc(log, status, cancelled).RunExe(Exe, args, scatterDir, cap, "mtkflash");
             string text = cap.ToString();
             try { File.WriteAllText(Path.Combine(workDir, "mtkflash_flash_log.txt"), text, new UTF8Encoding(true)); } catch { }

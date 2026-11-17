@@ -20,6 +20,41 @@ try:
     _lb1.get_backend = _get_backend
 except Exception:
     pass
+
+
+# Optional: talk to the device over the MediaTek VCOM serial COM port (pyserial)
+# instead of libusb/UsbDk - exactly how SP Flash Tool connects. Lets the tool work
+# on devices where UsbDk will not bind, without SP Flash Tool itself.
+def _use_serial(com=None):
+    import flasher as _fl, serial_connection as _sc
+
+    class _SerialShim(_sc.SerialConnection):
+        max_out_size = 512
+
+        def __init__(self):
+            super().__init__()
+            self.max_out_size = 512
+            if com:
+                self._forced = com
+
+        def find_device(self, timeout_sec=60.0):
+            if com:
+                self.port_name = com
+                print("[SERIAL] Using forced port: " + com, flush=True)
+                return True
+            return super().find_device(timeout_sec)
+
+        def set_line_coding(self, baudrate=921600):
+            try:
+                self.set_baudrate(baudrate)
+            except Exception:
+                pass
+
+        def find_and_connect(self, timeout_sec=120.0):
+            return super().find_and_connect(timeout_sec)
+
+    _fl.USBConnection = _SerialShim
+    print("[SERIAL] Using MTK VCOM serial backend (no UsbDk).", flush=True)
 from flasher import MTKFlasher, FlashError
 from usb_connection import USBError
 from brom import BromError
@@ -107,6 +142,8 @@ def main():
     pf.add_argument("--da-addr", type=_u, default=0x200000)
     pf.add_argument("--partitions")
     pf.add_argument("--no-reboot", action="store_true")
+    pf.add_argument("--serial", action="store_true", help="use MTK VCOM serial (no UsbDk)")
+    pf.add_argument("--com", help="force COM port, e.g. COM40")
     pf.set_defaults(fn=cmd_flash)
     pd = sub.add_parser("dumpall")
     pd.add_argument("--da", required=True)
@@ -115,8 +152,12 @@ def main():
     pd.add_argument("--skip")
     pd.add_argument("--gpt-bytes", type=_u, default=0x400000)
     pd.add_argument("--no-reboot", action="store_true")
+    pd.add_argument("--serial", action="store_true", help="use MTK VCOM serial (no UsbDk)")
+    pd.add_argument("--com", help="force COM port, e.g. COM40")
     pd.set_defaults(fn=cmd_dumpall)
     a = p.parse_args()
+    if getattr(a, "serial", False):
+        _use_serial(getattr(a, "com", None))
     a.fn(a)
 
 

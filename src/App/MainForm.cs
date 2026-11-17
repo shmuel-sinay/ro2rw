@@ -17,7 +17,7 @@ namespace Ro2rwPc
 
         ComboBox cmbProject;
         Button btnWizard, btnFlash, btnPlan, btnSp;
-        ToolStripMenuItem miEngMtk, miEngFast;
+        ToolStripMenuItem miEngMtk, miEngFast, miEngSerial;
         Form logWin; RichTextBox logWinBox;
         CheckBox cbRecovery, cbPatchVbFlag;
         ComboBox cmbLkAndroid, cmbVbMode;
@@ -435,12 +435,22 @@ namespace Ro2rwPc
             worker.Start();
         }
 
-        void SetEngine(MtkEngine e)
+        void SetEngine(MtkEngine e) { SetEngine(e, false); }
+
+        void SetEngine(MtkEngine e, bool serial)
         {
             if (e == MtkEngine.Fast && !FastEngine.Available) { Msg(this, "המנוע המהיר לא מובנה בגרסה הזו. הורד את הגרסה האחרונה מדף המהדורות.", MessageBoxIcon.Warning); return; }
             FastEngine.Selected = e;
-            if (miEngMtk != null) { miEngMtk.Checked = e == MtkEngine.Mtkclient; miEngFast.Checked = e == MtkEngine.Fast; }
-            Log(e == MtkEngine.Fast ? "מנוע צריבה/שאיבה: מהיר (ניסיוני). " + FastEngine.Warning : "מנוע צריבה/שאיבה: mtkclient (בטוח).", e == MtkEngine.Fast ? Color.Khaki : Color.LightGreen);
+            FastEngine.Serial = e == MtkEngine.Fast && serial;
+            if (FastEngine.Serial && string.IsNullOrEmpty(FastEngine.Com))
+            {
+                var com = Prompt("מספר COM של המכשיר (אופציונלי - השאר ריק לזיהוי אוטומטי, למשל COM40):", "מנוע serial");
+                FastEngine.Com = string.IsNullOrEmpty(com) ? null : com.Trim();
+            }
+            if (miEngMtk != null) { miEngMtk.Checked = e == MtkEngine.Mtkclient; miEngFast.Checked = e == MtkEngine.Fast && !FastEngine.Serial; miEngSerial.Checked = FastEngine.Serial; }
+            if (e == MtkEngine.Mtkclient) Log("מנוע צריבה/שאיבה: mtkclient (בטוח).", Color.LightGreen);
+            else if (FastEngine.Serial) Log("מנוע צריבה/שאיבה: מהיר דרך COM/serial (בלי UsbDk). מהיר, ועובד עם דרייבר ה-VCOM. נסה קודם שאיבה (קריאה בלבד). " + (FastEngine.Com ?? "זיהוי אוטומטי"), Color.Khaki);
+            else Log("מנוע צריבה/שאיבה: מהיר דרך USB (דורש UsbDk). " + FastEngine.Warning, Color.Khaki);
         }
 
         // ------------------------------------------------------------ dump
@@ -608,9 +618,11 @@ namespace Ro2rwPc
             mDev.DropDownItems.Add(new ToolStripSeparator());
             var mEng = new ToolStripMenuItem("מנוע צריבה / שאיבה");
             miEngMtk = new ToolStripMenuItem("mtkclient (בטוח, ברירת מחדל)", null, (s, e) => SetEngine(MtkEngine.Mtkclient)) { Checked = true };
-            miEngFast = new ToolStripMenuItem("מנוע מהיר של אליר (ניסיוני)", null, (s, e) => SetEngine(MtkEngine.Fast));
+            miEngFast = new ToolStripMenuItem("מנוע מהיר (USB / UsbDk)", null, (s, e) => SetEngine(MtkEngine.Fast, false));
+            miEngSerial = new ToolStripMenuItem("מנוע מהיר דרך COM (serial, בלי UsbDk) - מומלץ למכשירך", null, (s, e) => SetEngine(MtkEngine.Fast, true));
             mEng.DropDownItems.Add(miEngMtk);
             mEng.DropDownItems.Add(miEngFast);
+            mEng.DropDownItems.Add(miEngSerial);
             mDev.DropDownItems.Add(mEng);
             var mView = new ToolStripMenuItem("תצוגה") { Tag = "always" };
             mView.DropDownItems.Add("הגדל (Ctrl +)", null, (s, e) => SetZoom(zoom + 0.1f));
@@ -1287,7 +1299,7 @@ namespace Ro2rwPc
                     "sparse=" + cbSparse.Checked, "fstab=" + cbFstab.Checked, "nowifi=" + cbNoWifi.Checked, "abi=" + cmbAbi.SelectedItem, "keepv=" + cbKeepVerity.Checked, "keepe=" + cbKeepEnc.Checked,
                     "lkdelay=" + cbLkDelay.Checked, "lktext=" + cbLkText.Checked, "skipud=" + cbSkipUserdata.Checked, "project=" + (project != null ? project.Name : ""),
                     "recovery=" + cbRecovery.Checked, "vbflag=" + cbPatchVbFlag.Checked, "lkandroid=" + cmbLkAndroid.SelectedIndex, "vbmode=" + cmbVbMode.SelectedIndex,
-                    "projdir=" + (Project.BaseDirOverride ?? ""), "zoom=" + zoom.ToString(System.Globalization.CultureInfo.InvariantCulture), "engine=" + (FastEngine.Selected == MtkEngine.Fast ? "fast" : "mtkclient"), "sptool=" + (sptoolPath ?? "")
+                    "projdir=" + (Project.BaseDirOverride ?? ""), "zoom=" + zoom.ToString(System.Globalization.CultureInfo.InvariantCulture), "engine=" + (FastEngine.Selected == MtkEngine.Fast ? (FastEngine.Serial ? "serial" : "fast") : "mtkclient"), "engcom=" + (FastEngine.Com ?? ""), "sptool=" + (sptoolPath ?? "")
                 };
                 File.WriteAllLines(SettingsPath, kv);
             }
@@ -1320,7 +1332,12 @@ namespace Ro2rwPc
                 if (d.ContainsKey("lkandroid") && int.TryParse(d["lkandroid"], out ix) && ix >= 0 && ix < 3) cmbLkAndroid.SelectedIndex = ix;
                 if (d.ContainsKey("vbmode") && int.TryParse(d["vbmode"], out ix) && ix >= 0 && ix < 3) cmbVbMode.SelectedIndex = ix;
                 if (d.ContainsKey("projdir") && d["projdir"].Length > 0 && Directory.Exists(d["projdir"])) Project.BaseDirOverride = d["projdir"];
-                if (d.ContainsKey("engine") && d["engine"] == "fast" && FastEngine.Available) SetEngine(MtkEngine.Fast);
+                if (d.ContainsKey("engcom") && d["engcom"].Length > 0) FastEngine.Com = d["engcom"];
+                if (d.ContainsKey("engine") && FastEngine.Available)
+                {
+                    if (d["engine"] == "serial") SetEngine(MtkEngine.Fast, true);
+                    else if (d["engine"] == "fast") SetEngine(MtkEngine.Fast, false);
+                }
                 if (d.ContainsKey("sptool") && d["sptool"].Length > 0) sptoolPath = d["sptool"];
                 float zz;
                 if (d.ContainsKey("zoom") && float.TryParse(d["zoom"], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out zz) && Math.Abs(zz - 1f) > 0.01f) Shown += (s2, e2) => SetZoom(zz);
