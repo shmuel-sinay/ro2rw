@@ -64,6 +64,7 @@ namespace Ro2rwPc
             Build();
             WrapWithMenu();
             SetupTooltips();
+            ApplyTheme();
             LoadUiSettings();
             FormClosing += (s, e) => SaveUiSettings();
             LoadProjects(null);
@@ -76,8 +77,8 @@ namespace Ro2rwPc
         // ------------------------------------------------------------ UI
         void Build()
         {
-            Controls.Add(new Label { Text = "RO2RW PC", Font = fTitle, AutoSize = true, Location = new Point(14, 8) });
-            Controls.Add(new Label { Text = "RO2RW, Root עם Magisk, ביטול AVB והסרת Orange State - הכול על המחשב", AutoSize = true, Location = new Point(16, 42), ForeColor = Color.DimGray });
+            Controls.Add(new Label { Text = "RO2RW PC", Font = fTitle, AutoSize = true, Location = new Point(14, 8), ForeColor = Accent });
+            Controls.Add(new Label { Text = "RO2RW, Root עם Magisk, ביטול AVB והסרת Orange State - הכול על המחשב", AutoSize = true, Location = new Point(16, 42), ForeColor = Color.FromArgb(110, 119, 129) });
 
             // project bar
             var gp = new GroupBox { Text = "פרויקט (מכשיר)", Location = new Point(12, 68), Size = new Size(976, 104) };
@@ -952,7 +953,65 @@ namespace Ro2rwPc
                 pair.c.AccessibleName = pair.n;
         }
 
-        // ------------------------------------------------------------ SP Flash Tool (manual flashing)
+        // ------------------------------------------------------------ theme (light & clean)
+        static readonly Color Accent = Color.FromArgb(21, 101, 192);      // blue
+        static readonly Color Bg = Color.FromArgb(238, 241, 245);         // light gray-blue
+        static readonly Color CardText = Color.FromArgb(31, 41, 51);
+        static readonly Color[] PrimaryBg =
+        {
+            Color.FromArgb(46, 125, 50), Color.FromArgb(21, 101, 192), Color.FromArgb(198, 40, 40)
+        };
+
+        static void SetDoubleBuffered(Control c)
+        {
+            try { typeof(Control).GetProperty("DoubleBuffered", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic).SetValue(c, true, null); } catch { }
+        }
+
+        void ApplyTheme()
+        {
+            BackColor = Bg;
+            SetDoubleBuffered(this);
+            if (menu != null) { menu.BackColor = Color.White; menu.ForeColor = CardText; menu.Padding = new Padding(4, 2, 0, 2); }
+            StyleTree(this);
+        }
+
+        static void StyleTree(Control root)
+        {
+            foreach (Control c in root.Controls)
+            {
+                if (c is Panel) { c.BackColor = Bg; SetDoubleBuffered(c); }
+                else if (c is GroupBox) { c.ForeColor = Accent; c.BackColor = Bg; }
+                else if (c is Button) StyleButton((Button)c);
+                else if (c is TabControl) c.BackColor = Bg;
+                else if (c is Label && c.ForeColor == SystemColors.ControlText) c.ForeColor = CardText;
+                else if (c is ListView) { c.BackColor = Color.White; ((ListView)c).BorderStyle = BorderStyle.FixedSingle; }
+                else if (c is TextBox || c is ComboBox || c is NumericUpDown) c.BackColor = Color.White;
+                if (c.Controls.Count > 0) StyleTree(c);
+            }
+        }
+
+        static void StyleButton(Button b)
+        {
+            b.FlatStyle = FlatStyle.Flat;
+            b.FlatAppearance.BorderSize = 1;
+            bool primary = Array.IndexOf(PrimaryBg, b.BackColor) >= 0;
+            if (primary)
+            {
+                b.FlatAppearance.BorderColor = b.BackColor;
+                b.FlatAppearance.MouseOverBackColor = ControlPaint.Light(b.BackColor, 0.15f);
+                b.ForeColor = Color.White;
+            }
+            else
+            {
+                b.BackColor = Color.White;
+                b.ForeColor = Accent;
+                b.FlatAppearance.BorderColor = Color.FromArgb(205, 212, 220);
+                b.FlatAppearance.MouseOverBackColor = Color.FromArgb(232, 240, 251);
+            }
+            b.Cursor = Cursors.Hand;
+        }
+
+                // ------------------------------------------------------------ SP Flash Tool (manual flashing)
         void OpenInSpTool()
         {
             // 1. decide which folder holds the scatter + images
