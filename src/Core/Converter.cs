@@ -37,6 +37,8 @@ namespace Ro2rwPc
         public bool SparseOutput = true;
         public bool PatchVendorFstab = true;
         public bool PatchVbmeta = true;
+        /// <summary>Kosher/filtered device: delete /vendor/bin/hw/wpa_supplicant so Wi-Fi cannot connect.</summary>
+        public bool RemoveWifi = false;
     }
 
     /// <summary>Whole pipeline: open super → analyse → plan → write new super.</summary>
@@ -143,9 +145,14 @@ namespace Ro2rwPc
         }
 
         // ------------------------------------------------------------ analysis
+        byte[] wifiBackup; string wifiBackupName;
+        bool wifiRemoved;
+
         public void Analyse(Settings st)
         {
             var todo = Parts.Where(p => p.Convert && p.Size > 0).ToList();
+            if (st.RemoveWifi && !todo.Any(p => BaseName(p.Name) == "vendor"))
+                Log("! הסרת WiFi מבוקשת אבל מחיצת vendor אינה בעריכה - ה-WiFi לא יוסר. סמן גם את vendor.");
             int i = 0;
             foreach (var p in todo)
             {
@@ -155,6 +162,7 @@ namespace Ro2rwPc
                 p.Reader = p.Fs == "EROFS" ? (IFsReader)new ErofsReader(src) : new Ext4Reader(src);
                 var tree = p.Reader.ReadTree();
                 if (st.PatchVendorFstab && BaseName(p.Name) == "vendor") PatchFstabs(tree, p.Reader);
+                if (st.RemoveWifi && BaseName(p.Name) == "vendor") RemoveWifiBinary(tree, p.Reader);
                 p.Writer = new Ext4Writer(tree, BaseName(p.Name));
                 p.MinBytes = p.Writer.MinimalBytes;
                 p.FileCount = p.Writer.FileCount;
@@ -181,6 +189,32 @@ namespace Ro2rwPc
                     Log("  תוקן " + f.Path + " (נוספו שורות ext4)");
                 }
             }
+        }
+
+        /// <summary>Removes the wpa_supplicant binary from vendor (keeps a backup). Does NOT touch any XML.</summary>
+        void RemoveWifiBinary(FsEntry root, IFsReader reader)
+        {
+            // /vendor/bin/hw/wpa_supplicant  (also try /vendor/bin/wpa_supplicant)
+            FsEntry target = FindChild(FindChild(FindChild(root, "bin"), "hw"), "wpa_supplicant")
+                          ?? FindChild(FindChild(root, "bin"), "wpa_supplicant");
+            if (target == null || target.Inode.Type != NodeType.File)
+            {
+                Log("! לא נמצא wpa_supplicant ב-vendor - ה-WiFi לא הוסר (אולי מכשיר ללא WiFi, או נתיב אחר).");
+                return;
+            }
+            var ms = new MemoryStream();
+            reader.ReadData(target.Inode, (b, o, n) => ms.Write(b, o, n));
+            wifiBackup = ms.ToArray();
+            wifiBackupName = "wpa_supplicant.backup";
+            target.Parent.Children.Remove(target);
+            wifiRemoved = true;
+            Log("  הוסר WiFi: נמחק " + target.Path + " (גיבוי יישמר ב-\"ערוך\"). קובצי ה-XML לא שונו.");
+        }
+
+        static FsEntry FindChild(FsEntry e, string name)
+        {
+            if (e == null || e.Children == null) return null;
+            return e.Children.FirstOrDefault(c => string.Equals(c.Name, name, StringComparison.Ordinal));
         }
 
         public static string PatchFstabText(string text)
@@ -358,6 +392,10 @@ namespace Ro2rwPc
                 if (File.Exists(finalPath)) File.Delete(finalPath);
                 SparseWriter.Convert(rawPath, finalPath, pm => Progress(900 + pm / 10), Cancelled);
                 File.Delete(rawPath);
+            }
+            if (wifiRemoved && wifiBackup != null)
+            {
+                try { File.WriteAllBytes(Path.Combine(outDir, wifiBackupName), wifiBackup); Log("גיבוי wpa_supplicant נשמר: " + Path.Combine(outDir, wifiBackupName)); } catch { }
             }
             Progress(1000);
             return finalPath;

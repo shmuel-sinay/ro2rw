@@ -154,6 +154,18 @@ if [ -f fe_proj/gpt.bin ] && [ -f fe_proj/boot_a.img ] && ls fe_proj/*_scatter.t
 cp v2gz.img fe_ed/boot_a.img; cp vbmeta.img fe_ed/vbmeta_a.img; cp ../super.sparse.img fe_ed/super.img
 $T fastflash "$MG/fe_ed" "$MG/fl/gpt.bin" >/dev/null 2>&1
 if [ "$(cat fe_nflash.txt 2>/dev/null)" = 3 ] && [ ! -d fe_ed/_fastflash ] && [ ! -d fe_ed/_flash_tmp ]; then echo "ok   fast-flash"; else echo "FAIL fast-flash"; fail=1; fi
+# WiFi removal: delete /vendor/bin/hw/wpa_supplicant from super, keep XML, save backup
+mkdir -p wsrc/bin/hw wsrc/etc/permissions
+printf 'ELF-WPA' > wsrc/bin/hw/wpa_supplicant
+printf '<permissions><feature name="android.hardware.wifi"/></permissions>' > wsrc/etc/permissions/handheld.xml
+mke2fs -q -t ext4 -O ^has_journal -d wsrc wvendor.img 40M >/dev/null 2>&1
+$T mksuper wsuper.raw 120 vendor=wvendor.img >/dev/null; img2simg wsuper.raw wsuper.sparse.img
+mkdir -p wout wex; $T super wsuper.sparse.img wout sparse nowifi >/dev/null 2>&1
+simg2img wout/super_rw.img wout/back.raw; python3 "$ROOT/tests/lpcheck.py" wout/back.raw wex >/dev/null
+if debugfs -R "stat /bin/hw/wpa_supplicant" wex/vendor_a.img 2>&1 | grep -q "File not found" \
+   && debugfs -R "stat /etc/permissions/handheld.xml" wex/vendor_a.img 2>&1 | grep -q "Inode:" \
+   && cmp -s wout/wpa_supplicant.backup wsrc/bin/hw/wpa_supplicant \
+   && e2fsck -fn wex/vendor_a.img >/dev/null 2>&1; then echo "ok   remove-wifi"; else echo "FAIL remove-wifi"; fail=1; fi
 # vbmeta modes: 1 = verity only, 2 = verification only
 $T vbmeta2 vbmeta.img vb1.out 1 >/dev/null; $T vbmeta2 vbmeta.img vb2.out 2 >/dev/null
 python3 -c "assert open('vb1.out','rb').read()[123]==1 and open('vb2.out','rb').read()[123]==2" && echo "ok   vbmeta-modes" || { echo "FAIL vbmeta-modes"; fail=1; }

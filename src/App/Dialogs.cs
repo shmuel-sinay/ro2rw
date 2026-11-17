@@ -131,7 +131,7 @@ namespace Ro2rwPc
         RadioButton rbDump, rbFiles, rbHave; CheckBox cbSkip; Label lblFiles; string[] files = new string[0];
         CheckBox cbRoot, cbRo2rw, cbAvb, cbLk;
         RadioButton rbMax, rbFixed; NumericUpDown pS, pV, pP, pSE, pOT, mS, mV, mP, mSE, mOT; CheckBox cbSparse, cbFstab; Label lblPct;
-        ComboBox cmbAbi; CheckBox cbKeepV, cbKeepE;
+        ComboBox cmbAbi; CheckBox cbKeepV, cbKeepE; CheckBox cbNoWifi;
         CheckBox cbDelay, cbText;
         CheckBox cbFlash, cbReboot;
         Label lblSummary;
@@ -243,8 +243,9 @@ namespace Ro2rwPc
             lblPct = new Label { Location = new Point(20, 184), Size = new Size(560, 22) };
             cbSparse = new CheckBox { Text = "פלט sparse (קטן יותר, מתאים ל-fastboot ול-SP Flash Tool)", Location = new Point(0, 220), Size = new Size(600, 24), Checked = true };
             cbFstab = new CheckBox { Text = "הוסף שורות ext4 ל-fstab של vendor", Location = new Point(0, 248), Size = new Size(600, 24), Checked = true };
-            p.Controls.Add(new Label { Text = "אם אין מספיק מקום פנוי ב-super, תופיע שגיאה עם הגודל הפנוי האמיתי.", Location = new Point(0, 284), Size = new Size(600, 40), ForeColor = Color.DimGray });
-            p.Controls.AddRange(new Control[] { rbFixed, rbMax, lblPct, cbSparse, cbFstab });
+            cbNoWifi = new CheckBox { Text = "הסר WiFi (מכשיר מסונן) - מוחק wpa_supplicant מ-vendor", Location = new Point(0, 276), Size = new Size(600, 24) };
+            p.Controls.Add(new Label { Text = "אם אין מספיק מקום פנוי ב-super, תופיע שגיאה עם הגודל הפנוי האמיתי.", Location = new Point(0, 306), Size = new Size(600, 36), ForeColor = Color.DimGray });
+            p.Controls.AddRange(new Control[] { rbFixed, rbMax, lblPct, cbSparse, cbFstab, cbNoWifi });
             EventHandler upd = (s, e) =>
             {
                 foreach (var n in new[] { mS, mV, mP, mSE, mOT }) n.Enabled = rbFixed.Checked;
@@ -348,7 +349,7 @@ namespace Ro2rwPc
             {
                 MaxMode = rbMax.Checked, PctS = (int)pS.Value, PctV = (int)pV.Value, PctP = (int)pP.Value, PctSE = (int)pSE.Value, PctOT = (int)pOT.Value,
                 FixedMbPer = new Dictionary<string, int> { { "S", (int)mS.Value }, { "V", (int)mV.Value }, { "P", (int)mP.Value }, { "SE", (int)mSE.Value }, { "OT", (int)mOT.Value } },
-                SparseOutput = cbSparse.Checked, PatchVendorFstab = cbFstab.Checked
+                SparseOutput = cbSparse.Checked, PatchVendorFstab = cbFstab.Checked, RemoveWifi = cbNoWifi.Checked
             };
             st.Magisk = new MagiskOptions { Abi = (string)cmbAbi.SelectedItem, KeepVerity = cbKeepV.Checked, KeepForceEncrypt = cbKeepE.Checked };
             st.LkDelay = cbDelay.Checked; st.LkText = cbText.Checked;
@@ -371,6 +372,7 @@ namespace Ro2rwPc
                     ? string.Format("MAX - System {0}%, Vendor {1}%, Product {2}%, System_ext {3}%, אחרות {4}%", s.PctS, s.PctV, s.PctP, s.PctSE, s.PctOT)
                     : string.Format("+MB - System {0}, Vendor {1}, Product {2}, System_ext {3}, אחרות {4}", s.FixedMbPer["S"], s.FixedMbPer["V"], s.FixedMbPer["P"], s.FixedMbPer["SE"], s.FixedMbPer["OT"])));
             }
+            if (r.DoRo2rw && r.Settings.Ro2rw.RemoveWifi) l.Add("  • הסרת WiFi (מכשיר מסונן)");
             if (r.DoAvb) l.Add("  • ביטול AVB");
             if (r.DoLk) l.Add("  • Orange State: " + (r.Settings.LkDelay ? "בלי השהיה" : "") + (r.Settings.LkDelay && r.Settings.LkText ? ", " : "") + (r.Settings.LkText ? "בלי טקסט" : ""));
             l.Add("");

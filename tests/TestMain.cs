@@ -31,7 +31,7 @@ static class TestMain
                         {
                             c.Log = Console.WriteLine;
                             c.Open(a[1]);
-                            var st = new Settings { SparseOutput = a.Length > 3 && a[3] == "sparse" };
+                            var st = new Settings { SparseOutput = a.Length > 3 && a[3] == "sparse", RemoveWifi = Array.IndexOf(a, "nowifi") >= 0 };
                             c.Analyse(st);
                             c.Plan(st);
                             Console.WriteLine("out=" + c.Write(st, a[2]));

@@ -21,7 +21,7 @@
 
 | כלי | אפשרויות |
 |---|---|
-| RO2RW | MAX (אחוזים), FIXED (MB קבוע), **תכנון מפורט לפי מחיצה**: לכל מחיצה בוחרים אם להמיר וכמה MB להוסיף, עם מד מקום פנוי חי. התכנון נשמר ליד ה-super. sparse, ‏fstab של vendor |
+| RO2RW | MAX (אחוזים), FIXED (MB קבוע), **הסרת WiFi** למכשיר מסונן (מחיקת wpa_supplicant מ-vendor, בלי לגעת ב-XML, עם גיבוי), **תכנון מפורט לפי מחיצה**: לכל מחיצה בוחרים אם להמיר וכמה MB להוסיף, עם מד מקום פנוי חי. התכנון נשמר ליד ה-super. sparse, ‏fstab של vendor |
 | Magisk | ABI (אוטומטי או ידני), KEEPVERITY, KEEPFORCEENCRYPT, RECOVERYMODE, PATCHVBMETAFLAG, בחירת APK אחר |
 | vbmeta | לכבות הכול, רק verity, או רק verification |
 | LK | ביטול ההשהיה, מחיקת הטקסט, גרסת אנדרואיד (אוטומטי, 9 ומטה, 10 ומעלה) |

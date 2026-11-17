@@ -31,7 +31,7 @@ namespace Ro2rwPc
         // RO2RW
         RadioButton rbMax, rbFixed;
         NumericUpDown nS, nV, nP, nSE, nOT, nFixed;
-        CheckBox cbSparse, cbFstab;
+        CheckBox cbSparse, cbFstab, cbNoWifi;
         Label lblTotal;
         // Magisk
         CheckBox cbKeepVerity, cbKeepEnc;
@@ -156,9 +156,10 @@ namespace Ro2rwPc
             nFixed = new NumericUpDown { Location = new Point(276, 117), Size = new Size(90, 26), Maximum = 100000, Value = 200 };
             cbSparse = new CheckBox { Text = "פלט sparse (קטן יותר)", Location = new Point(10, 154), Size = new Size(370, 24), Checked = true };
             cbFstab = new CheckBox { Text = "הוסף שורות ext4 ל-fstab של vendor", Location = new Point(10, 180), Size = new Size(370, 24), Checked = true };
-            btnPlan = new Button { Text = "תכנון מפורט לפי מחיצה...", Location = new Point(10, 214), Size = new Size(230, 32) };
+            cbNoWifi = new CheckBox { Text = "הסר WiFi (מכשיר מסונן - מוחק wpa_supplicant מ-vendor)", Location = new Point(10, 204), Size = new Size(370, 24) };
+            btnPlan = new Button { Text = "תכנון מפורט לפי מחיצה...", Location = new Point(10, 232), Size = new Size(230, 32) };
             btnPlan.Click += (s, e) => OpenSuperPlan(null);
-            t.Controls.AddRange(new Control[] { rbMax, lblTotal, rbFixed, nFixed, cbSparse, cbFstab, btnPlan });
+            t.Controls.AddRange(new Control[] { rbMax, lblTotal, rbFixed, nFixed, cbSparse, cbFstab, cbNoWifi, btnPlan });
             EventHandler upd = (s, e) => UpdateSizeUi();
             foreach (var n in new[] { nS, nV, nP, nSE, nOT }) n.ValueChanged += upd;
             rbMax.CheckedChanged += upd;
@@ -500,7 +501,7 @@ namespace Ro2rwPc
             st.Ro2rw = new Settings
             {
                 MaxMode = rbMax.Checked, PctS = (int)nS.Value, PctV = (int)nV.Value, PctP = (int)nP.Value, PctSE = (int)nSE.Value, PctOT = (int)nOT.Value,
-                FixedMb = (int)nFixed.Value, SparseOutput = cbSparse.Checked, PatchVendorFstab = cbFstab.Checked
+                FixedMb = (int)nFixed.Value, SparseOutput = cbSparse.Checked, PatchVendorFstab = cbFstab.Checked, RemoveWifi = cbNoWifi.Checked
             };
             st.Magisk = new MagiskOptions { KeepVerity = cbKeepVerity.Checked, KeepForceEncrypt = cbKeepEnc.Checked, Abi = (string)cmbAbi.SelectedItem, RecoveryMode = cbRecovery.Checked, PatchVbmetaFlag = cbPatchVbFlag.Checked };
             st.LkDelay = cbLkDelay.Checked; st.LkText = cbLkText.Checked;
@@ -939,6 +940,7 @@ namespace Ro2rwPc
             t(nFixed, "כמה MB פנויים להוסיף לכל מחיצה");
             t(cbSparse, "קובץ קטן יותר. מתאים ל-fastboot ול-SP Flash Tool");
             t(cbFstab, "מוסיף שורות ext4 ל-fstab של vendor, כדי שהמערכת תעגן ext4");
+            t(cbNoWifi, "למכשיר מסונן: מוחק את wpa_supplicant מ-vendor כך שאי אפשר להתחבר ל-WiFi (לא נוגע בקובצי XML). גיבוי נשמר. חובה שגם vendor יומר");
             t(btnPlan, "לכל מחיצה: האם להמיר וכמה MB להוסיף, עם מד מקום פנוי");
             t(cmbAbi, "auto מזהה לפי init שב-ramdisk. arm64-v8a = מערכת 64 ביט, armeabi-v7a = מערכת 32 ביט");
             t(cbKeepVerity, "משאיר את dm-verity ב-fstab. בדרך כלל לא מסמנים");
@@ -1075,7 +1077,7 @@ namespace Ro2rwPc
                 var kv = new List<string>
                 {
                     "max=" + rbMax.Checked, "s=" + nS.Value, "v=" + nV.Value, "p=" + nP.Value, "se=" + nSE.Value, "ot=" + nOT.Value, "fixed=" + nFixed.Value,
-                    "sparse=" + cbSparse.Checked, "fstab=" + cbFstab.Checked, "abi=" + cmbAbi.SelectedItem, "keepv=" + cbKeepVerity.Checked, "keepe=" + cbKeepEnc.Checked,
+                    "sparse=" + cbSparse.Checked, "fstab=" + cbFstab.Checked, "nowifi=" + cbNoWifi.Checked, "abi=" + cmbAbi.SelectedItem, "keepv=" + cbKeepVerity.Checked, "keepe=" + cbKeepEnc.Checked,
                     "lkdelay=" + cbLkDelay.Checked, "lktext=" + cbLkText.Checked, "skipud=" + cbSkipUserdata.Checked, "project=" + (project != null ? project.Name : ""),
                     "recovery=" + cbRecovery.Checked, "vbflag=" + cbPatchVbFlag.Checked, "lkandroid=" + cmbLkAndroid.SelectedIndex, "vbmode=" + cmbVbMode.SelectedIndex,
                     "projdir=" + (Project.BaseDirOverride ?? ""), "zoom=" + zoom.ToString(System.Globalization.CultureInfo.InvariantCulture), "engine=" + (FastEngine.Selected == MtkEngine.Fast ? "fast" : "mtkclient"), "sptool=" + (sptoolPath ?? "")
@@ -1099,6 +1101,7 @@ namespace Ro2rwPc
                 n(nS, "s"); n(nV, "v"); n(nP, "p"); n(nSE, "se"); n(nOT, "ot"); n(nFixed, "fixed");
                 if (d.ContainsKey("sparse")) cbSparse.Checked = b("sparse");
                 if (d.ContainsKey("fstab")) cbFstab.Checked = b("fstab");
+                if (d.ContainsKey("nowifi")) cbNoWifi.Checked = b("nowifi");
                 if (d.ContainsKey("abi") && cmbAbi.Items.Contains(d["abi"])) cmbAbi.SelectedItem = d["abi"];
                 cbKeepVerity.Checked = b("keepv"); cbKeepEnc.Checked = b("keepe");
                 if (d.ContainsKey("lkdelay")) cbLkDelay.Checked = b("lkdelay");
