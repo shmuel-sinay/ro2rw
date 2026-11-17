@@ -535,6 +535,7 @@ namespace Ro2rwPc
             mDev.DropDownItems.Add("שאב רום מלא לפרויקט...", null, (s, e) => DumpRom());
             mDev.DropDownItems.Add("צרוב חזרה את תיקיית \"ערוך\"...", null, (s, e) => FlashBack(null, true, null));
             mDev.DropDownItems.Add("צרוב קבצים נבחרים...", null, (s, e) => FlashPickFiles());
+            mDev.DropDownItems.Add("פתח ב-SP Flash Tool (צריבה ידנית)...", null, (s, e) => OpenInSpTool());
             mDev.DropDownItems.Add(new ToolStripSeparator());
             mDev.DropDownItems.Add("התקן דרייבר USB (UsbDk)", null, (s, e) => InstallDriver());
             mDev.DropDownItems.Add(new ToolStripSeparator());
@@ -950,6 +951,58 @@ namespace Ro2rwPc
                 pair.c.AccessibleName = pair.n;
         }
 
+        // ------------------------------------------------------------ SP Flash Tool (manual flashing)
+        void OpenInSpTool()
+        {
+            // 1. decide which folder holds the scatter + images
+            string folder = null;
+            if (project != null && Directory.Exists(project.Edited) && Directory.GetFiles(project.Edited).Length > 0)
+                folder = project.Edited;
+            if (folder == null)
+            {
+                using (var d = new FolderBrowserDialog { Description = "בחר את התיקייה עם ה-scatter והקבצים לצריבה (למשל התיקייה \"ערוך\")" })
+                {
+                    if (d.ShowDialog(this) != DialogResult.OK) return;
+                    folder = d.SelectedPath;
+                }
+            }
+            // 2. make sure a scatter exists (generate from the project if needed)
+            string scatter = Directory.GetFiles(folder, "*scatter*.txt").OrderBy(x => x).FirstOrDefault();
+            if (scatter == null && project != null)
+            {
+                try { EditedScatter.Create(project, x => Log(x)); } catch (Exception ex) { Log("! " + ex.Message, Color.Khaki); }
+                scatter = Directory.GetFiles(folder, "*scatter*.txt").OrderBy(x => x).FirstOrDefault();
+            }
+            if (scatter == null)
+            {
+                Msg(this, "לא נמצא קובץ scatter בתיקייה. בצע עריכה קודם (נוצר scatter אוטומטית), או שים scatter של הקושחה בתיקייה.", MessageBoxIcon.Warning);
+                return;
+            }
+            // 3. locate flash_tool.exe (ask once, remember)
+            if (string.IsNullOrEmpty(sptoolPath) || !File.Exists(sptoolPath))
+            {
+                if (!Ui.Ask(this, "SP Flash Tool אינה מובנית (היא תוכנה סגורה). יש להתקין אותה בעצמך מהאתר הרשמי.\n\nלבחור עכשיו את הקובץ flash_tool.exe שהתקנת?")) return;
+                using (var d = new OpenFileDialog { Title = "בחר את flash_tool.exe", Filter = "SP Flash Tool|flash_tool*.exe;FlashTool*.exe|כל הקבצים|*.exe" })
+                {
+                    if (d.ShowDialog(this) != DialogResult.OK) return;
+                    sptoolPath = d.FileName;
+                }
+            }
+            // 4. hand everything over
+            try { Clipboard.SetText(scatter); } catch { }
+            try { Process.Start("explorer.exe", "/select,\"" + scatter + "\""); } catch { }
+            try { Process.Start(new ProcessStartInfo(sptoolPath) { UseShellExecute = true, WorkingDirectory = Path.GetDirectoryName(sptoolPath) }); }
+            catch (Exception ex) { Msg(this, "לא ניתן להפעיל את SP Flash Tool: " + ex.Message, MessageBoxIcon.Error); return; }
+            Log("SP Flash Tool נפתחה. נתיב ה-scatter הועתק ללוח: " + scatter, Color.LightGreen);
+            Msg(this,
+                "ב-SP Flash Tool:\n" +
+                "1. לחץ \"Scatter-loading\" ובחר את הקובץ שסומן בתיקייה שנפתחה\n   (הנתיב כבר בלוח - אפשר להדביק עם Ctrl+V).\n" +
+                "2. ודא שמסומנות רק המחיצות שערכת.\n" +
+                "3. בחר \"Download Only\" ולחץ Download.\n" +
+                "4. חבר את המכשיר כבוי (עם דרייבר ה-VCOM של MediaTek).\n\n" +
+                "⚠️ גבה את המכשיר לפני הצריבה.");
+        }
+
         // ------------------------------------------------------------ settings persistence
         string SettingsPath { get { return Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "RO2RW-PC.ini"); } }
 
@@ -963,7 +1016,7 @@ namespace Ro2rwPc
                     "sparse=" + cbSparse.Checked, "fstab=" + cbFstab.Checked, "abi=" + cmbAbi.SelectedItem, "keepv=" + cbKeepVerity.Checked, "keepe=" + cbKeepEnc.Checked,
                     "lkdelay=" + cbLkDelay.Checked, "lktext=" + cbLkText.Checked, "skipud=" + cbSkipUserdata.Checked, "project=" + (project != null ? project.Name : ""),
                     "recovery=" + cbRecovery.Checked, "vbflag=" + cbPatchVbFlag.Checked, "lkandroid=" + cmbLkAndroid.SelectedIndex, "vbmode=" + cmbVbMode.SelectedIndex,
-                    "projdir=" + (Project.BaseDirOverride ?? ""), "zoom=" + zoom.ToString(System.Globalization.CultureInfo.InvariantCulture), "engine=" + (FastEngine.Selected == MtkEngine.Fast ? "fast" : "mtkclient")
+                    "projdir=" + (Project.BaseDirOverride ?? ""), "zoom=" + zoom.ToString(System.Globalization.CultureInfo.InvariantCulture), "engine=" + (FastEngine.Selected == MtkEngine.Fast ? "fast" : "mtkclient"), "sptool=" + (sptoolPath ?? "")
                 };
                 File.WriteAllLines(SettingsPath, kv);
             }
@@ -971,6 +1024,7 @@ namespace Ro2rwPc
         }
 
         string lastProject;
+        string sptoolPath;
         void LoadUiSettings()
         {
             try
@@ -995,6 +1049,7 @@ namespace Ro2rwPc
                 if (d.ContainsKey("vbmode") && int.TryParse(d["vbmode"], out ix) && ix >= 0 && ix < 3) cmbVbMode.SelectedIndex = ix;
                 if (d.ContainsKey("projdir") && d["projdir"].Length > 0 && Directory.Exists(d["projdir"])) Project.BaseDirOverride = d["projdir"];
                 if (d.ContainsKey("engine") && d["engine"] == "fast" && FastEngine.Available) SetEngine(MtkEngine.Fast);
+                if (d.ContainsKey("sptool") && d["sptool"].Length > 0) sptoolPath = d["sptool"];
                 float zz;
                 if (d.ContainsKey("zoom") && float.TryParse(d["zoom"], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out zz) && Math.Abs(zz - 1f) > 0.01f) Shown += (s2, e2) => SetZoom(zz);
             }
