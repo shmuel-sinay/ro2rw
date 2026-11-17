@@ -6,3 +6,6 @@ src/bin/
 src/obj/
 out/
 src/res/
+__pycache__/
+*.pyc
+third_party/mtkflash/logs/

@@ -15,6 +15,7 @@ namespace Ro2rwPc
         public bool Sparse;
         public bool Selected = true;
         public string Problem;     // non-null = cannot flash
+        public string FlashFile;   // path actually flashed (unsparsed copy), set during Flash
     }
 
     /// <summary>Writes edited images back to the device with the bundled mtkclient ("mtk w").</summary>
@@ -24,6 +25,7 @@ namespace Ro2rwPc
         public Action<string> Status = s => { };
         public Action<int> Progress = p => { };
         public Func<bool> Cancelled = () => false;
+        public string GptPath;     // for the fast engine (scatter needs addresses)
 
         static readonly HashSet<string> Dangerous = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         { "preloader", "preloader_a", "preloader_b", "pgpt", "sgpt", "gpt", "proinfo", "nvram", "nvdata", "nvcfg", "protect1", "protect2", "persist", "seccfg", "efuse", "otp", "flashinfo" };
@@ -101,9 +103,15 @@ namespace Ro2rwPc
                     if (it.Sparse)
                     {
                         Log("  ממיר " + Path.GetFileName(it.File) + " מ-sparse לקובץ רגיל לצורך צריבה...");
-                        files.Add(Unsparse(it.File, tmp, p => Status("ממיר sparse... " + p / 10 + "%")));
+                        it.FlashFile = Unsparse(it.File, tmp, p => Status("ממיר sparse... " + p / 10 + "%"));
                     }
-                    else files.Add(it.File);
+                    else it.FlashFile = it.File;
+                    files.Add(it.FlashFile);
+                }
+                if (FastEngine.Selected == MtkEngine.Fast)
+                {
+                    FastEngine.FlashViaScatter(todo, GptPath, workDir, rebootAfter, Log, Status, Cancelled);
+                    return;
                 }
                 foreach (var f in files) if (f.Contains(",")) throw new IOException("נתיב עם פסיק לא נתמך: " + f);
                 var mc = new MtkClient { Log = Log, Status = Status, Cancelled = Cancelled };

@@ -9,7 +9,7 @@
     <PlatformTarget>AnyCPU</PlatformTarget>
     <Prefer32Bit>false</Prefer32Bit>
     <ApplicationManifest>App\app.manifest</ApplicationManifest>
-    <Version>2.1.0</Version>
+    <Version>2.2.0</Version>
     <Product>RO2RW PC</Product>
     <Description>Converts Android super.img partitions to read-write ext4</Description>
     <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
@@ -27,6 +27,10 @@
     <EmbeddedResource Include="res\mtk.exe" LogicalName="mtk.exe" Condition="Exists('res\mtk.exe')" />
     <EmbeddedResource Include="res\Magisk.apk" LogicalName="Magisk.apk" Condition="Exists('res\Magisk.apk')" />
     <EmbeddedResource Include="res\Magisk.version" LogicalName="Magisk.version" Condition="Exists('res\Magisk.version')" />
+    <EmbeddedResource Include="res\mtkflash.exe" LogicalName="mtkflash.exe" Condition="Exists('res\mtkflash.exe')" />
+    <EmbeddedResource Include="res\DA_PL.bin" LogicalName="DA_PL.bin" Condition="Exists('res\DA_PL.bin')" />
+    <EmbeddedResource Include="res\mtkflash-README.txt" LogicalName="mtkflash-README.txt" Condition="Exists('res\mtkflash-README.txt')" />
+    <EmbeddedResource Include="res\mtkflash-LICENSE.txt" LogicalName="mtkflash-LICENSE.txt" Condition="Exists('res\mtkflash-LICENSE.txt')" />
     <EmbeddedResource Include="res\mtkclient-LICENSE.txt" LogicalName="mtkclient-LICENSE.txt" Condition="Exists('res\mtkclient-LICENSE.txt')" />
   </ItemGroup>
   <ItemGroup>

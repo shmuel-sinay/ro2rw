@@ -184,9 +184,11 @@ namespace Ro2rwPc
         }
 
         /// <summary>Runs mtk.exe with arguments, streaming output. Returns exit code and the full log text.</summary>
-        public int Run(string args, string workDir, StringBuilder captured)
+        public int Run(string args, string workDir, StringBuilder captured) { return RunExe(EnsureExe(), args, workDir, captured, "mtk"); }
+
+        /// <summary>Runs any bundled exe with streamed output, cancellable. Shared by mtkclient and the fast engine.</summary>
+        public int RunExe(string exe, string args, string workDir, StringBuilder captured, string label)
         {
-            var exe = EnsureExe();
             var psi = new ProcessStartInfo(exe, args)
             {
                 UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true, RedirectStandardInput = true,
@@ -195,7 +197,7 @@ namespace Ro2rwPc
             };
             psi.EnvironmentVariables["PYTHONUNBUFFERED"] = "1";
             psi.EnvironmentVariables["PYTHONIOENCODING"] = "utf-8";
-            Log("> mtk " + args);
+            Log("> " + label + " " + args);
             using (var p = Process.Start(psi))
             {
                 p.StandardInput.Close();
@@ -248,12 +250,19 @@ namespace Ro2rwPc
             if (!File.Exists(gptPath))
                 throw new IOException(rc != 0 ? "mtkclient נכשל (קוד " + rc + "). ראה את היומן ואת mtkclient_log.txt" : "לא נוצרה טבלת מחיצות - השאיבה לא הושלמה");
 
+            return FinishDump(proj, tmp, gptPath, text, Log);
+        }
+
+        /// <summary>Moves dumped &lt;name&gt;.bin/.img into the project, writes gpt.bin, generates a scatter. Shared by both engines.</summary>
+        public static int FinishDump(Project proj, string tmp, string gptPath, string logText, Action<string> Log)
+        {
             var g = Gpt.Parse(File.ReadAllBytes(gptPath));
             Log(string.Format("טבלת מחיצות: {0} מחיצות, סקטור {1}, דיסק {2}", g.Parts.Count, g.SectorSize, Converter.Human(g.DiskSize)));
             int moved = 0;
             foreach (var p in g.Parts)
             {
                 string src = Path.Combine(tmp, p.Name + ".bin");
+                if (!File.Exists(src)) src = Path.Combine(tmp, p.Name + ".img");
                 if (!File.Exists(src)) continue;
                 string dst = Path.Combine(proj.Root, p.Name + ".img");
                 if (File.Exists(dst)) File.Delete(dst);
@@ -261,14 +270,13 @@ namespace Ro2rwPc
                 moved++;
             }
             string gptDst = Path.Combine(proj.Root, "gpt.bin");
-            if (File.Exists(gptDst)) File.Delete(gptDst);
-            File.Move(gptPath, gptDst);
+            if (Path.GetFullPath(gptPath) != Path.GetFullPath(gptDst)) { if (File.Exists(gptDst)) File.Delete(gptDst); File.Move(gptPath, gptDst); }
             foreach (var f in Directory.GetFiles(tmp)) { var d = Path.Combine(proj.Root, Path.GetFileName(f)); if (!File.Exists(d)) File.Move(f, d); }
             try { Directory.Delete(tmp, true); } catch { }
 
-            var pm = Regex.Match(text, @"\b(MT[0-9]{4}[A-Z]?)\b");
+            var pm = Regex.Match(logText ?? "", @"\b(MT[0-9]{4}[A-Z]?)\b");
             string platform = pm.Success ? pm.Groups[1].Value.ToUpperInvariant() : null;
-            bool ufs = g.SectorSize == 4096 || Regex.IsMatch(text, @"\bUFS\b");
+            bool ufs = g.SectorSize == 4096 || Regex.IsMatch(logText ?? "", @"\bUFS\b");
             string scatter = ScatterWriter.Write(proj.Root, proj.Name, g, platform, ufs,
                 name => File.Exists(Path.Combine(proj.Root, name + ".img")) ? name + ".img" : null);
             Log("נוצר קובץ scatter: " + Path.GetFileName(scatter) + (platform == null ? " (לא זוהה מעבד - ערוך את שורת platform)" : ""));

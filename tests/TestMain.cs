@@ -164,6 +164,23 @@ static class TestMain
                         File.WriteAllBytes(a[3], outb);
                         return 0;
                     }
+                case "fastdump":
+                    {
+                        FastEngine.Selected = MtkEngine.Fast;
+                        var proj = new Project { Name = "FD", Root = a[1] };
+                        Directory.CreateDirectory(proj.Edited);
+                        int n = FastEngine.DumpProject(proj, true, Console.WriteLine, st => {}, () => false);
+                        Console.WriteLine("dumped=" + n);
+                        return 0;
+                    }
+                case "fastflash":
+                    {
+                        FastEngine.Selected = MtkEngine.Fast;
+                        var items = Flasher.Plan(a[1], a[2]);
+                        var fl = new Flasher { Log = Console.WriteLine, GptPath = a[2] };
+                        fl.Flash(items, a[1], false);
+                        return 0;
+                    }
                 case "ls":
                     using (var src = new RawFileSource(a[1]))
                     {

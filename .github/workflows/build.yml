@@ -59,6 +59,20 @@ jobs:
           Invoke-WebRequest $apk.browser_download_url -OutFile src/res/Magisk.apk
           Set-Content -NoNewline src/res/Magisk.version $rel.tag_name
           "Magisk $($rel.tag_name): $((Get-Item src/res/Magisk.apk).Length) bytes"
+      - name: Build fast engine (mtkflash.exe)
+        shell: pwsh
+        run: |
+          pip install pyusb pyserial libusb-package pyinstaller
+          pyinstaller --onefile --name mtkflash --distpath distfast `
+            --paths third_party/mtkflash `
+            --collect-all libusb_package `
+            third_party/mtkflash/ro2rw_engine.py
+          Copy-Item distfast/mtkflash.exe src/res/mtkflash.exe
+          Copy-Item third_party/mtkflash/DA_PL.bin src/res/DA_PL.bin
+          Copy-Item third_party/mtkflash/ATTRIBUTION.md src/res/mtkflash-README.txt
+          Copy-Item LICENSE src/res/mtkflash-LICENSE.txt
+          src/res/mtkflash.exe --help | Select-Object -First 3
+          if ($LASTEXITCODE -ne 0) { throw "mtkflash.exe does not start" }
       - name: Build EXE
         run: dotnet build src/RO2RW-PC.csproj -c Release -o out
       - name: Check embedded tools
@@ -66,7 +80,7 @@ jobs:
         run: |
           $size = (Get-Item out/RO2RW-PC.exe).Length
           "RO2RW-PC.exe: $size bytes"
-          if ($size -lt 20MB) { throw "mtk.exe / Magisk were not embedded" }
+          if ($size -lt 40MB) { throw "bundled tools were not embedded" }
       - name: Upload EXE
         uses: actions/upload-artifact@v4
         with:
@@ -119,6 +133,7 @@ jobs:
             - **⬆ צרוב חזרה**: צריבת תיקיית "ערוך" למכשיר עם mtkclient (שמות המחיצות נבדקים מול gpt.bin, sparse מומר אוטומטית, מחיצות רגישות חסומות)
 
             ### חדש בגרסה הזו
+            - מנוע צריבה/שאיבה נוסף לבחירה: "המנוע המהיר" מאת alir325000 (ניסיוני, מהיר יותר) לצד mtkclient (ברירת מחדל, בטוח). בתפריט מכשיר
             - עצירה באמצע של כל פעולה (ביטול / Esc). קבצים חלקיים נמחקים
             - תכנון מפורט של super: לכל מחיצה בוחרים אם להמיר וכמה MB להוסיף, עם מד מקום פנוי
             - Magisk: RECOVERYMODE, PATCHVBMETAFLAG · vbmeta: לכבות הכול, רק verity או רק verification · LK: בחירת גרסת אנדרואיד

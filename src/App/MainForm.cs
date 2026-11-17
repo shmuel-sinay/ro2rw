@@ -17,6 +17,7 @@ namespace Ro2rwPc
 
         ComboBox cmbProject;
         Button btnWizard, btnFlash, btnPlan;
+        ToolStripMenuItem miEngMtk, miEngFast;
         CheckBox cbRecovery, cbPatchVbFlag;
         ComboBox cmbLkAndroid, cmbVbMode;
         readonly ToolTip tips = new ToolTip { AutoPopDelay = 15000, InitialDelay = 400 };
@@ -371,7 +372,24 @@ namespace Ro2rwPc
             worker.Start();
         }
 
+        void SetEngine(MtkEngine e)
+        {
+            if (e == MtkEngine.Fast && !FastEngine.Available) { Msg(this, "המנוע המהיר לא מובנה בגרסה הזו. הורד את הגרסה האחרונה מדף המהדורות.", MessageBoxIcon.Warning); return; }
+            FastEngine.Selected = e;
+            if (miEngMtk != null) { miEngMtk.Checked = e == MtkEngine.Mtkclient; miEngFast.Checked = e == MtkEngine.Fast; }
+            Log(e == MtkEngine.Fast ? "מנוע צריבה/שאיבה: מהיר (ניסיוני). " + FastEngine.Warning : "מנוע צריבה/שאיבה: mtkclient (בטוח).", e == MtkEngine.Fast ? Color.Khaki : Color.LightGreen);
+        }
+
         // ------------------------------------------------------------ dump
+        static string EngineName() { return FastEngine.Selected == MtkEngine.Fast ? "מנוע מהיר" : "mtkclient"; }
+
+        int DumpEngine(Project proj, bool skip)
+        {
+            if (FastEngine.Selected == MtkEngine.Fast)
+                return FastEngine.DumpProject(proj, skip, s => Log(s), SetStatus, () => cancel);
+            return new MtkClient { Log = s => Log(s), Status = SetStatus, Cancelled = () => cancel }.DumpProject(proj, skip);
+        }
+
         void SetStatus(string t)
         {
             if (InvokeRequired) { BeginInvoke(new Action(() => SetStatus(t))); return; }
@@ -425,9 +443,9 @@ namespace Ro2rwPc
                 try
                 {
                     Log("");
-                    Log("▶ שאיבת רום עם mtkclient - ממתין למכשיר במצב BROM...");
-                    var mc = new MtkClient { Log = s => Log(s), Status = SetStatus, Cancelled = () => cancel };
-                    int n = mc.DumpProject(proj, skip);
+                    Log("▶ שאיבת רום (" + EngineName() + ") - ממתין למכשיר במצב BROM...");
+                    if (FastEngine.Selected == MtkEngine.Fast) Log("  " + FastEngine.Warning, Color.Khaki);
+                    int n = DumpEngine(proj, skip);
                     Log(string.Format("✔ נשאבו {0} מחיצות לתוך הפרויקט ({1})", n, sw.Elapsed.ToString(@"hh\:mm\:ss")));
                 }
                 catch (OperationCanceledException) { Log("בוטל.", Color.Khaki); }
@@ -519,6 +537,13 @@ namespace Ro2rwPc
             mDev.DropDownItems.Add("צרוב קבצים נבחרים...", null, (s, e) => FlashPickFiles());
             mDev.DropDownItems.Add(new ToolStripSeparator());
             mDev.DropDownItems.Add("התקן דרייבר USB (UsbDk)", null, (s, e) => InstallDriver());
+            mDev.DropDownItems.Add(new ToolStripSeparator());
+            var mEng = new ToolStripMenuItem("מנוע צריבה / שאיבה");
+            miEngMtk = new ToolStripMenuItem("mtkclient (בטוח, ברירת מחדל)", null, (s, e) => SetEngine(MtkEngine.Mtkclient)) { Checked = true };
+            miEngFast = new ToolStripMenuItem("מנוע מהיר של אליר (ניסיוני)", null, (s, e) => SetEngine(MtkEngine.Fast));
+            mEng.DropDownItems.Add(miEngMtk);
+            mEng.DropDownItems.Add(miEngFast);
+            mDev.DropDownItems.Add(mEng);
             var mView = new ToolStripMenuItem("תצוגה") { Tag = "always" };
             mView.DropDownItems.Add("הגדל (Ctrl +)", null, (s, e) => SetZoom(zoom + 0.1f));
             mView.DropDownItems.Add("הקטן (Ctrl -)", null, (s, e) => SetZoom(zoom - 0.1f));
@@ -727,6 +752,7 @@ namespace Ro2rwPc
                 if (f.ShowDialog(this) != DialogResult.OK) return;
                 reboot = f.Reboot.Checked;
             }
+            string gptForFlash = gpt;
             cancel = false; SetBusy(true);
             worker = new Thread(() =>
             {
@@ -735,7 +761,8 @@ namespace Ro2rwPc
                     if (!AskBrom("צריבה חזרה למכשיר:")) { Log("הצריבה בוטלה."); return; }
                     Log("");
                     Log("▶ צריבה חזרה למכשיר - ממתין למכשיר במצב BROM...");
-                    var fl = new Flasher { Log = s => Log(s), Status = SetStatus, Cancelled = () => cancel };
+                    if (FastEngine.Selected == MtkEngine.Fast) Log("  " + FastEngine.Warning, Color.Khaki);
+                    var fl = new Flasher { Log = s => Log(s), Status = SetStatus, Cancelled = () => cancel, GptPath = gptForFlash };
                     fl.Flash(items, workDir, reboot);
                     if (after != null) after();
                 }
@@ -773,8 +800,8 @@ namespace Ro2rwPc
                     if (w.Source == 0)
                     {
                         if (!AskBrom("שאיבת רום מלא לפרויקט \"" + proj.Name + "\":")) { Log("בוטל."); return; }
-                        Log("▶ שלב 1: שאיבה מהמכשיר...");
-                        int n = new MtkClient { Log = s => Log(s), Status = SetStatus, Cancelled = () => cancel }.DumpProject(proj, w.SkipUserdata);
+                        Log("▶ שלב 1: שאיבה מהמכשיר (" + EngineName() + ")...");
+                        int n = DumpEngine(proj, w.SkipUserdata);
                         Log("✔ נשאבו " + n + " מחיצות");
                     }
                     else if (w.Source == 1)
@@ -936,7 +963,7 @@ namespace Ro2rwPc
                     "sparse=" + cbSparse.Checked, "fstab=" + cbFstab.Checked, "abi=" + cmbAbi.SelectedItem, "keepv=" + cbKeepVerity.Checked, "keepe=" + cbKeepEnc.Checked,
                     "lkdelay=" + cbLkDelay.Checked, "lktext=" + cbLkText.Checked, "skipud=" + cbSkipUserdata.Checked, "project=" + (project != null ? project.Name : ""),
                     "recovery=" + cbRecovery.Checked, "vbflag=" + cbPatchVbFlag.Checked, "lkandroid=" + cmbLkAndroid.SelectedIndex, "vbmode=" + cmbVbMode.SelectedIndex,
-                    "projdir=" + (Project.BaseDirOverride ?? ""), "zoom=" + zoom.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                    "projdir=" + (Project.BaseDirOverride ?? ""), "zoom=" + zoom.ToString(System.Globalization.CultureInfo.InvariantCulture), "engine=" + (FastEngine.Selected == MtkEngine.Fast ? "fast" : "mtkclient")
                 };
                 File.WriteAllLines(SettingsPath, kv);
             }
@@ -967,6 +994,7 @@ namespace Ro2rwPc
                 if (d.ContainsKey("lkandroid") && int.TryParse(d["lkandroid"], out ix) && ix >= 0 && ix < 3) cmbLkAndroid.SelectedIndex = ix;
                 if (d.ContainsKey("vbmode") && int.TryParse(d["vbmode"], out ix) && ix >= 0 && ix < 3) cmbVbMode.SelectedIndex = ix;
                 if (d.ContainsKey("projdir") && d["projdir"].Length > 0 && Directory.Exists(d["projdir"])) Project.BaseDirOverride = d["projdir"];
+                if (d.ContainsKey("engine") && d["engine"] == "fast" && FastEngine.Available) SetEngine(MtkEngine.Fast);
                 float zz;
                 if (d.ContainsKey("zoom") && float.TryParse(d["zoom"], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out zz) && Math.Abs(zz - 1f) > 0.01f) Shown += (s2, e2) => SetZoom(zz);
             }

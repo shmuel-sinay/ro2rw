@@ -134,6 +134,26 @@ $T flash "$PWD/fl/ed" "$PWD/fl/gpt.bin" >/dev/null
 M="$W/tools/mtkclient"
 if grep -q "^w boot_a,super,vbmeta_a " "$M/args.txt" && cmp -s "$M/written_super.bin" ../super.raw && cmp -s "$M/written_boot_a.bin" v2gz.img \
    && [ ! -e "$M/written_preloader.bin" ] && [ ! -d fl/ed/_flash_tmp ]; then echo "ok   flash-back"; else echo "FAIL flash-back: $(cat "$M/args.txt")"; fail=1; fi
+# fast engine (alir): fake mtkflash.exe exercises dump + scatter-flash wiring (cwd = mg)
+FT="$(dirname "$W/t.exe")/tools/mtkflash"; mkdir -p "$FT"; : > "$FT/DA_PL.bin"; MG="$PWD"
+cat > "$FT/mtkflash.exe" <<SH
+#!/bin/bash
+cmd="\$1"; shift
+declare -A A; while [ \$# -gt 0 ]; do case "\$1" in --*) k="\${1:2}"; shift; A[\$k]="\$1";; esac; shift; done
+if [ "\$cmd" = dumpall ]; then
+  cp "$MG/fl/gpt.bin" "\${A[out]}/gpt.bin"
+  cp "$MG/v2gz.img" "\${A[out]}/boot_a.img"; cp "$MG/vbmeta.img" "\${A[out]}/vbmeta_a.img"; cp "$MG/../super.sparse.img" "\${A[out]}/super.img"
+  echo "Chip: MT6765"
+elif [ "\$cmd" = flash ]; then
+  grep -E "partition_name|file_name|is_download" "\${A[scatter]}" | paste - - - | grep -c "is_download: true" > "$MG/fe_nflash.txt"
+fi
+SH
+chmod +x "$FT/mtkflash.exe"; mkdir -p fe_proj fe_ed
+$T fastdump "$MG/fe_proj" >/dev/null 2>&1
+if [ -f fe_proj/gpt.bin ] && [ -f fe_proj/boot_a.img ] && ls fe_proj/*_scatter.txt >/dev/null 2>&1 && [ "$(grep -c 'is_download: true' fe_proj/*_scatter.txt)" = 3 ]; then echo "ok   fast-dump"; else echo "FAIL fast-dump"; fail=1; fi
+cp v2gz.img fe_ed/boot_a.img; cp vbmeta.img fe_ed/vbmeta_a.img; cp ../super.sparse.img fe_ed/super.img
+$T fastflash "$MG/fe_ed" "$MG/fl/gpt.bin" >/dev/null 2>&1
+if [ "$(cat fe_nflash.txt 2>/dev/null)" = 3 ] && [ ! -d fe_ed/_fastflash ] && [ ! -d fe_ed/_flash_tmp ]; then echo "ok   fast-flash"; else echo "FAIL fast-flash"; fail=1; fi
 # vbmeta modes: 1 = verity only, 2 = verification only
 $T vbmeta2 vbmeta.img vb1.out 1 >/dev/null; $T vbmeta2 vbmeta.img vb2.out 2 >/dev/null
 python3 -c "assert open('vb1.out','rb').read()[123]==1 and open('vb2.out','rb').read()[123]==2" && echo "ok   vbmeta-modes" || { echo "FAIL vbmeta-modes"; fail=1; }
