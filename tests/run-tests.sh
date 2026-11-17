@@ -170,8 +170,24 @@ if debugfs -R "stat /bin/hw/wpa_supplicant" wex/vendor_a.img 2>&1 | grep -q "Fil
 $T vbmeta2 vbmeta.img vb1.out 1 >/dev/null; $T vbmeta2 vbmeta.img vb2.out 2 >/dev/null
 python3 -c "assert open('vb1.out','rb').read()[123]==1 and open('vb2.out','rb').read()[123]==2" && echo "ok   vbmeta-modes" || { echo "FAIL vbmeta-modes"; fail=1; }
 # LK manual Android version: the lk.img pattern is Android 10+ (02) -> "9" finds nothing, "10" patches
-d9=$($T lk2 lk.img lk9.out 9 | tail -1); d10=$($T lk2 lk.img lk10.out 10 | tail -1)
+d9=$($T lk2 lk.img lk9.out 9 | grep -oE "delay=[0-9]+" | tail -1); d10=$($T lk2 lk.img lk10.out 10 | grep -oE "delay=[0-9]+" | tail -1)
 [ "$d9" = "delay=0" ] && [ "$d10" = "delay=1" ] && echo "ok   lk-android-version" || { echo "FAIL lk-android-version: $d9 $d10"; fail=1; }
+# lk dm_verity/fastboot/red_state neutering (source: lkpatcher patterns) -> 00207047, length preserved
+python3 -c "
+import os,struct
+d=bytearray(struct.pack('<II',0x58881688,0)+b'lk'.ljust(32,b'\0')+os.urandom(1000))
+d+=bytes.fromhex('30b583b002ab0022')+os.urandom(300)
+d+=bytes.fromhex('022800d0704738b53224e0f7')+os.urandom(300)
+d+=bytes.fromhex('f0b5adf5925d')+os.urandom(300)
+d+=bytes.fromhex('f0b5002489b0')+os.urandom(300)
+open('lkw.img','wb').write(d)"
+$T lk lkw.img lkw.out >/dev/null 2>&1
+python3 -c "
+a=open('lkw.img','rb').read(); b=open('lkw.out','rb').read()
+ok = len(a)==len(b)
+for pat in ('30b583b002ab0022','022800d0704738b53224e0f7','f0b5adf5925d','f0b5002489b0'):
+    off=a.find(bytes.fromhex(pat)); ok = ok and b[off:off+4].hex()=='00207047'
+import sys; sys.exit(0 if ok else 1)" && echo "ok   lk-dmverity" || { echo "FAIL lk-dmverity"; fail=1; }
 # generic hex replace with wildcards (?? keeps bytes)
 python3 -c "open('hx.bin','wb').write(bytes.fromhex('00112233AABBCCDD0011223344'))"
 $T hex hx.bin hx.out "0011??33" "FF??EE??" all >/dev/null

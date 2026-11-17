@@ -44,7 +44,9 @@ namespace Ro2rwPc
             StartPosition = FormStartPosition.CenterParent;
             MinimizeBox = false;
             Controls.Add(Ui.L(title, 12, 10, 790, 24));
-            Controls.Add(new Label { Text = "סמן מה לצרוב. אפשר לשנות את שם המחיצה (למשל boot_a). שורות אדומות לא ייצרבו.", Location = new Point(12, 36), Size = new Size(790, 22), ForeColor = Color.DimGray });
+            Controls.Add(new Label { Text = "סמן מה לצרוב. אפשר לשנות את שם המחיצה (למשל boot_a). שורות אדומות לא ייצרבו.", Location = new Point(12, 36), Size = new Size(560, 22), ForeColor = Color.DimGray });
+            var chkAll = new CheckBox { Text = "סמן / נקה הכל", Location = new Point(600, 34), Size = new Size(208, 24), Font = Ui.Bold };
+            Controls.Add(chkAll);
             grid = new DataGridView
             {
                 Location = new Point(12, 64), Size = new Size(796, 370), AllowUserToAddRows = false, AllowUserToDeleteRows = false,
@@ -77,6 +79,15 @@ namespace Ro2rwPc
             };
             grid.CurrentCellDirtyStateChanged += (s, e) => { if (grid.IsCurrentCellDirty) grid.CommitEdit(DataGridViewDataErrorContexts.Commit); };
             Controls.Add(grid);
+            chkAll.CheckedChanged += (s, e) =>
+            {
+                grid.EndEdit();
+                foreach (DataGridViewRow r in grid.Rows)
+                {
+                    var it2 = (FlashItem)r.Tag;
+                    r.Cells[0].Value = chkAll.Checked && it2.Problem == null;
+                }
+            };
             Reboot = new CheckBox { Text = "אתחל את המכשיר בסיום", Location = new Point(12, 444), Size = new Size(300, 24), Checked = true };
             Controls.Add(Reboot);
             var ok = new Button { Text = "צרוב", Location = new Point(12, 476), Size = new Size(120, 34), Font = Ui.Bold, BackColor = Color.FromArgb(198, 40, 40), ForeColor = Color.White, FlatStyle = FlatStyle.Flat };

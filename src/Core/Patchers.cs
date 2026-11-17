@@ -44,7 +44,27 @@ namespace Ro2rwPc
     /// <summary>MTK LK: removes the 5 second Orange State delay and/or the warning text.</summary>
     public static class LkPatcher
     {
-        public sealed class Result { public int DelayPatched; public int TextsCleared; public string AndroidHint = ""; }
+        public sealed class Result { public int DelayPatched; public int TextsCleared; public int WarningsPatched; public string AndroidHint = ""; public List<string> Categories = new List<string>(); }
+
+        // MTK lk warning/verify patterns (source: R0rt1z2/lkpatcher patches.json, GPLv3).
+        // Each needle's first bytes are overwritten with 00207047 = "movs r0,#0 ; bx lr" (return 0, neuter the routine).
+        static readonly string[][] WarnPatterns =
+        {
+            new[] { "fastboot_unlock", "2de9f04fadf5ac5d", "00207047" },
+            new[] { "fastboot_unlock", "f0b5adf5925d",     "00207047" },
+            new[] { "dm_verity",       "30b583b002ab0022", "00207047" },
+            new[] { "dm_verity",       "022800d0704738b53224e0f7", "00207047" },
+            new[] { "orange_state",    "08b50a4b7b441b681b68022b", "00207047" },
+            new[] { "orange_state",    "08b50e4b7b441b681b68022b", "00207047" },
+            new[] { "red_state",       "f0b5002489b0",     "00207047" },
+        };
+
+        static byte[] Hex(string h)
+        {
+            var r = new byte[h.Length / 2];
+            for (int i = 0; i < r.Length; i++) r[i] = System.Convert.ToByte(h.Substring(i * 2, 2), 16);
+            return r;
+        }
 
         // 08 B5 ?? ?? 7B 44 1B 68 1B 68 0[1|2] 2B  ->  08 B5 00 20 08 BD 1B 68 1B 68 0[1|2] 2B
         static readonly byte[] Suffix = { 0x7B, 0x44, 0x1B, 0x68, 0x1B, 0x68 };
@@ -72,6 +92,25 @@ namespace Ro2rwPc
                     i += 11;
                 }
                 if (res.DelayPatched == 0) log("  ! קוד ההשהיה (5 שניות) לא נמצא. ייתכן שהקובץ כבר תוקן או שהמכשיר לא נתמך.");
+
+                // dm-verity / fastboot-unlock / red/orange state routines (אחראים גם על "לחץ כפתור כדי להמשיך")
+                foreach (var pat in WarnPatterns)
+                {
+                    var needle = Hex(pat[1]); var patch = Hex(pat[2]);
+                    for (int i = 0; i + needle.Length <= b.Length; i++)
+                    {
+                        bool ok = true;
+                        for (int k = 0; k < needle.Length; k++) if (b[i + k] != needle[k]) { ok = false; break; }
+                        if (!ok) continue;
+                        for (int k = 0; k < patch.Length; k++) b[i + k] = patch[k];
+                        res.WarningsPatched++;
+                        if (!res.Categories.Contains(pat[0])) res.Categories.Add(pat[0]);
+                        log(string.Format("  נוטרלה אזהרת {0} ב-0x{1:X}", pat[0], i));
+                        i += needle.Length - 1;
+                    }
+                }
+                if (res.WarningsPatched > 0) log("  סוגי אזהרות שטופלו: " + string.Join(", ", res.Categories.ToArray()));
+                else log("  (לא נמצאו דפוסי dm_verity/fastboot/red_state - ייתכן שכבר מתוקנים או לא קיימים בדגם)");
             }
             if (removeText)
             {

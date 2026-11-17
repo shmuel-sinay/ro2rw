@@ -55,16 +55,20 @@ namespace Ro2rwPc
             lblFree = new Label { Location = new Point(12, 442), Size = new Size(836, 48), Font = Ui.Bold };
             var btnSplit = new Button { Text = "חלק את כל המקום הפנוי", Location = new Point(12, 500), Size = new Size(190, 34) };
             btnSplit.Click += (s, e) => SplitFree();
-            btnReset = new Button { Text = "אפס", Location = new Point(210, 500), Size = new Size(80, 34) };
+            btnReset = new Button { Text = "אפס MB", Location = new Point(210, 500), Size = new Size(90, 34) };
             btnReset.Click += (s, e) => { foreach (DataGridViewRow r in grid.Rows) r.Cells[5].Value = "0"; Recalc(); };
-            btnSave = new Button { Text = "שמור תכנון", Location = new Point(600, 500), Size = new Size(130, 34), Font = Ui.Bold, Enabled = false };
+            var btnAllP = new Button { Text = "המר הכל", Location = new Point(308, 500), Size = new Size(90, 34) };
+            btnAllP.Click += (s, e) => { SetAllConvert(true); };
+            var btnNoneP = new Button { Text = "המר כלום", Location = new Point(406, 500), Size = new Size(90, 34) };
+            btnNoneP.Click += (s, e) => { SetAllConvert(false); };
+            btnSave = new Button { Text = "שמור תכנון", Location = new Point(612, 500), Size = new Size(120, 34), Font = Ui.Bold, Enabled = false };
             btnSave.Click += (s, e) => Save();
             btnCancelScan = new Button { Text = "סגור", Location = new Point(738, 500), Size = new Size(110, 34) };
             btnCancelScan.Click += (s, e) => { cancel = true; DialogResult = DialogResult.Cancel; };
             var tip = new ToolTip();
             tip.SetToolTip(btnSplit, "מחלק את כל המקום הפנוי ב-super בין המחיצות המסומנות, לפי האחוזים שבלשונית RO2RW");
             tip.SetToolTip(btnSave, "התכנון נשמר ליד קובץ ה-super, ומשמש בכל עריכה הבאה (גם באשף)");
-            Controls.AddRange(new Control[] { lblInfo, grid, bar, lblFree, btnSplit, btnReset, btnSave, btnCancelScan });
+            Controls.AddRange(new Control[] { lblInfo, grid, bar, lblFree, btnSplit, btnReset, btnAllP, btnNoneP, btnSave, btnCancelScan });
             Shown += (s, e) => Scan();
             FormClosing += (s, e) => { cancel = true; if (conv != null && (worker == null || !worker.IsAlive)) conv.Dispose(); };
         }
@@ -147,6 +151,16 @@ namespace Ro2rwPc
                 int same = rows.Count(x => ((PartInfo)x.Tag).Category == p.Category);
                 double share = pct[p.Category] / 100.0 / Math.Max(1, same);
                 r.Cells[5].Value = ((long)(free * share) >> 20).ToString();
+            }
+            Recalc();
+        }
+
+        void SetAllConvert(bool on)
+        {
+            foreach (DataGridViewRow r in grid.Rows)
+            {
+                var p = (PartInfo)r.Tag;
+                if (p.Fs == "EROFS" || p.Fs == "EXT4") r.Cells[0].Value = on;
             }
             Recalc();
         }

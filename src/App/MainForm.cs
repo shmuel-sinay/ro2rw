@@ -16,8 +16,9 @@ namespace Ro2rwPc
         readonly Font fTitle = new Font("Segoe UI", 15f, FontStyle.Bold);
 
         ComboBox cmbProject;
-        Button btnWizard, btnFlash, btnPlan;
+        Button btnWizard, btnFlash, btnPlan, btnSp;
         ToolStripMenuItem miEngMtk, miEngFast;
+        Form logWin; RichTextBox logWinBox;
         CheckBox cbRecovery, cbPatchVbFlag;
         ComboBox cmbLkAndroid, cmbVbMode;
         readonly ToolTip tips = new ToolTip { AutoPopDelay = 15000, InitialDelay = 400 };
@@ -65,6 +66,7 @@ namespace Ro2rwPc
             WrapWithMenu();
             SetupTooltips();
             ApplyTheme();
+            Load += (s, e) => FitToScreen();
             LoadUiSettings();
             FormClosing += (s, e) => SaveUiSettings();
             LoadProjects(null);
@@ -112,10 +114,14 @@ namespace Ro2rwPc
             };
             btnAddFiles = new Button { Text = "הוסף קבצים...", Location = new Point(10, 274), Size = new Size(130, 32) };
             btnAddFiles.Click += (s, e) => PickFiles();
-            btnRefresh = new Button { Text = "רענן", Location = new Point(148, 274), Size = new Size(80, 32) };
+            btnRefresh = new Button { Text = "רענן", Location = new Point(148, 274), Size = new Size(70, 32) };
             btnRefresh.Click += (s, e) => RefreshFiles();
-            var hint = new Label { Text = "אפשר גם לגרור קבצים לחלון", Location = new Point(236, 281), Size = new Size(300, 22), ForeColor = Color.DimGray };
-            gf.Controls.AddRange(new Control[] { lvFiles, btnAddFiles, btnRefresh, hint });
+            var btnSelAll = new Button { Text = "סמן הכל", Location = new Point(226, 274), Size = new Size(90, 32) };
+            btnSelAll.Click += (s, e) => SelectAllFiles(true);
+            var btnSelNone = new Button { Text = "נקה הכל", Location = new Point(324, 274), Size = new Size(90, 32) };
+            btnSelNone.Click += (s, e) => SelectAllFiles(false);
+            var hint = new Label { Text = "קליק ימני על קובץ = אפשרויות", Location = new Point(420, 281), Size = new Size(130, 22), ForeColor = Color.DimGray };
+            gf.Controls.AddRange(new Control[] { lvFiles, btnAddFiles, btnRefresh, btnSelAll, btnSelNone, hint });
             Controls.Add(gf);
 
             // settings tabs
@@ -130,18 +136,23 @@ namespace Ro2rwPc
             btnWizard.Click += (s, e) => RunWizard();
             btnRun = new Button { Text = "בצע עריכה", Location = new Point(150, 502), Size = new Size(160, 44), Font = new Font("Segoe UI", 12f, FontStyle.Bold), BackColor = Color.FromArgb(46, 125, 50), ForeColor = Color.White, FlatStyle = FlatStyle.Flat };
             btnRun.Click += (s, e) => RunEdits();
-            btnFlash = new Button { Text = "⬆ צרוב חזרה", Location = new Point(318, 502), Size = new Size(140, 44), Font = new Font("Segoe UI", 11f, FontStyle.Bold), BackColor = Color.FromArgb(198, 40, 40), ForeColor = Color.White, FlatStyle = FlatStyle.Flat };
+            btnSp = new Button { Text = "📲 SP Flash Tool", Location = new Point(318, 502), Size = new Size(160, 44), Font = new Font("Segoe UI", 11f, FontStyle.Bold), BackColor = Color.FromArgb(21, 101, 192), ForeColor = Color.White, FlatStyle = FlatStyle.Flat };
+            btnSp.Click += (s, e) => OpenInSpTool();
+            btnFlash = new Button { Text = "⬆ צרוב (USB)", Location = new Point(484, 502), Size = new Size(120, 44), Font = new Font("Segoe UI", 10f, FontStyle.Bold), BackColor = Color.FromArgb(198, 40, 40), ForeColor = Color.White, FlatStyle = FlatStyle.Flat };
             btnFlash.Click += (s, e) => FlashBack(null, true, null);
-            btnCancel = new Button { Text = "ביטול", Location = new Point(466, 502), Size = new Size(90, 44), Enabled = false };
+            btnCancel = new Button { Text = "ביטול", Location = new Point(610, 502), Size = new Size(80, 44), Enabled = false };
             btnCancel.Click += (s, e) => { cancel = true; Log("מבטל...", Color.Khaki); };
-            prog = new ProgressBar { Location = new Point(566, 512), Size = new Size(422, 26), Maximum = 1000 };
-            Controls.AddRange(new Control[] { btnWizard, btnRun, btnFlash, btnCancel, prog });
+            prog = new ProgressBar { Location = new Point(698, 512), Size = new Size(290, 26), Maximum = 1000 };
+            Controls.AddRange(new Control[] { btnWizard, btnRun, btnSp, btnFlash, btnCancel, prog });
 
             log = new RichTextBox
             {
+                // double-click opens the resizable log window (handy on small screens)
+
                 Location = new Point(12, 554), Size = new Size(976, 234), ReadOnly = true, BackColor = Color.FromArgb(24, 24, 28), ForeColor = Color.Gainsboro,
                 Font = new Font("Consolas", 10f), RightToLeft = RightToLeft.Yes, Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right
             };
+            log.DoubleClick += (s, e) => OpenLogWindow();
             Controls.Add(log);
         }
 
@@ -255,18 +266,43 @@ namespace Ro2rwPc
             log.SelectionColor = c ?? (text.Contains("✖") ? Color.Tomato : text.Contains("✔") ? Color.LightGreen : text.StartsWith("▶") ? Color.DeepSkyBlue : Color.Gainsboro);
             log.AppendText(text + "\n");
             log.ScrollToCaret();
+            if (logWinBox != null && !logWinBox.IsDisposed)
+            {
+                logWinBox.SelectionStart = logWinBox.TextLength; logWinBox.SelectionColor = c ?? Color.Gainsboro;
+                logWinBox.AppendText(text + "\n"); logWinBox.ScrollToCaret();
+            }
+        }
+
+        void OpenLogWindow()
+        {
+            if (logWin != null && !logWin.IsDisposed) { logWin.WindowState = FormWindowState.Normal; logWin.Activate(); return; }
+            logWin = new Form { Text = "יומן - RO2RW PC", Size = new Size(820, 560), StartPosition = FormStartPosition.CenterScreen, RightToLeft = RightToLeft.Yes, RightToLeftLayout = true, ShowInTaskbar = true };
+            logWinBox = new RichTextBox { Dock = DockStyle.Fill, ReadOnly = true, BackColor = Color.FromArgb(24, 24, 28), ForeColor = Color.Gainsboro, Font = new Font("Consolas", 11f), RightToLeft = RightToLeft.No, WordWrap = true };
+            try { logWinBox.Rtf = log.Rtf; } catch { logWinBox.Text = log.Text; }
+            logWinBox.SelectionStart = logWinBox.TextLength; logWinBox.ScrollToCaret();
+            var bar = new Panel { Dock = DockStyle.Bottom, Height = 36 };
+            var clr = new Button { Text = "נקה", Dock = DockStyle.Right, Width = 90 };
+            clr.Click += (s2, e2) => { logWinBox.Clear(); };
+            var sav = new Button { Text = "שמור...", Dock = DockStyle.Right, Width = 100 };
+            sav.Click += (s2, e2) => SaveLog();
+            bar.Controls.Add(clr); bar.Controls.Add(sav);
+            logWin.Controls.Add(logWinBox); logWin.Controls.Add(bar);
+            logWin.FormClosed += (s2, e2) => { logWinBox = null; logWin = null; };
+            logWin.Show(this);
         }
 
         void SetProgress(int p)
         {
             if (InvokeRequired) { BeginInvoke(new Action(() => SetProgress(p))); return; }
             prog.Value = Math.Max(0, Math.Min(1000, p));
+            if (p > 0 && p < 1000) lblStatus.Text = "מתבצע... " + (p / 10) + "%";
+            else if (p >= 1000) lblStatus.Text = "";
         }
 
         void SetBusy(bool busy)
         {
             if (InvokeRequired) { BeginInvoke(new Action(() => SetBusy(busy))); return; }
-            foreach (var b in new Control[] { btnRun, btnNewProj, btnAddFiles, btnRefresh, cmbProject, lvFiles, btnDump, btnDriver, btnWizard, btnFlash }) b.Enabled = !busy;
+            foreach (var b in new Control[] { btnRun, btnNewProj, btnAddFiles, btnRefresh, cmbProject, lvFiles, btnDump, btnDriver, btnWizard, btnFlash, btnSp }) b.Enabled = !busy;
             if (menu != null) foreach (ToolStripMenuItem m in menu.Items) if (m.Tag as string != "always") m.Enabled = !busy;
             btnCancel.Enabled = busy;
             UseWaitCursor = busy;
@@ -339,6 +375,15 @@ namespace Ro2rwPc
                 it.Checked = f.Selected;
             }
             if (files.Count == 0) Log("הפרויקט ריק. הוסף קבצי רום (super, boot, init_boot, vbmeta, lk...) בכפתור \"הוסף קבצים\" או בגרירה.", Color.Khaki);
+        }
+
+        void SelectAllFiles(bool on)
+        {
+            foreach (ListViewItem it in lvFiles.Items)
+            {
+                var pf = it.Tag as ProjectFile;
+                if (pf != null && pf.Action != EditAction.None) it.Checked = on;
+            }
         }
 
         void PickFiles()
@@ -552,6 +597,8 @@ namespace Ro2rwPc
             mView.DropDownItems.Add("הגדל (Ctrl +)", null, (s, e) => SetZoom(zoom + 0.1f));
             mView.DropDownItems.Add("הקטן (Ctrl -)", null, (s, e) => SetZoom(zoom - 0.1f));
             mView.DropDownItems.Add("גודל רגיל (Ctrl 0)", null, (s, e) => SetZoom(1f));
+            mView.DropDownItems.Add(new ToolStripSeparator());
+            mView.DropDownItems.Add("יומן בחלון נפרד (ניתן להגדלה)", null, (s, e) => OpenLogWindow());
             var mHelp = new ToolStripMenuItem("עזרה") { Tag = "always" };
             mHelp.DropDownItems.Add("מדריך מפורט (F1)", null, (s, e) => { using (var h = new HelpForm()) h.ShowDialog(this); });
             mHelp.DropDownItems.Add("מדריך קצר", null, (s, e) => Ui.Msg(this,
@@ -926,7 +973,8 @@ namespace Ro2rwPc
             Action<Control, string> t = (c, text) => { tips.SetToolTip(c, text); c.AccessibleDescription = text; };
             t(btnWizard, "אשף שלב אחרי שלב: פרויקט, מקור, עריכות, גדלים וצריבה (Ctrl+W)");
             t(btnRun, "מבצע את העריכות המסומנות. הפלט נשמר בתיקייה \"ערוך\" (Ctrl+E)");
-            t(btnFlash, "צורב את תיקיית \"ערוך\" חזרה למכשיר עם mtkclient, אחרי חלון אישור (Ctrl+F)");
+            t(btnSp, "הדרך המומלצת: מכין את התיקייה \"ערוך\" + scatter ופותח את SP Flash Tool לצריבה ידנית. עובד גם כשדרייבר UsbDk לא נתמך במכשיר");
+            t(btnFlash, "צריבה ישירה דרך USB (mtkclient/מנוע מהיר) - דורש דרייבר UsbDk. אם המכשיר לא מזוהה, השתמש ב-SP Flash Tool");
             t(btnCancel, "עוצר מיד את הפעולה הנוכחית. קבצים חלקיים נמחקים (Esc)");
             t(btnDump, "שואב את כל המחיצות מהמכשיר לתוך הפרויקט (MediaTek, מצב BROM)");
             t(btnDriver, "מתקין את דרייבר UsbDk ש-mtkclient צריך (פעם אחת, הרשאות מנהל)");
@@ -953,6 +1001,21 @@ namespace Ro2rwPc
             t(cmbVbMode, "\"הכול\" מומלץ. האפשרויות האחרות מכבות רק חלק מהאימות");
             foreach (var pair in new[] { new { c = (Control)btnWizard, n = "אשף" }, new { c = (Control)btnFlash, n = "צרוב חזרה" }, new { c = (Control)btnDump, n = "שאב רום מהמכשיר" } })
                 pair.c.AccessibleName = pair.n;
+        }
+
+        void FitToScreen()
+        {
+            try
+            {
+                var wa = Screen.FromControl(this).WorkingArea;
+                MinimumSize = new Size(Math.Min(MinimumSize.Width, wa.Width), Math.Min(760, wa.Height));
+                if (Height > wa.Height - 8 || Width > wa.Width - 8)
+                {
+                    // small screen (e.g. 14\" with scaling): use all available space so the log is readable
+                    WindowState = FormWindowState.Maximized;
+                }
+            }
+            catch { }
         }
 
         // ------------------------------------------------------------ theme (light & clean)
@@ -1037,7 +1100,7 @@ namespace Ro2rwPc
             }
             if (scatter == null)
             {
-                Msg(this, "לא נמצא קובץ scatter בתיקייה. בצע עריכה קודם (נוצר scatter אוטומטית), או שים scatter של הקושחה בתיקייה.", MessageBoxIcon.Warning);
+                Msg(this, "לא נמצא קובץ scatter.\n\nאפשרויות:\n1. העתק לפרויקט את קובץ ה-scatter של הקושחה (‏*_scatter.txt) ולחץ שוב.\n2. או בצע עריכה (RO2RW) - אם יש בפרויקט scatter מקורי, ייווצר scatter לתיקייה \"ערוך\".\n\n(ל-SP Flash Tool אפשר גם לטעון ישירות את ה-scatter של הקושחה ולהחליף ידנית את נתיבי הקבצים לקבצים שבתיקייה \"ערוך\".)", MessageBoxIcon.Warning);
                 return;
             }
             // 3. locate flash_tool.exe (ask once, remember)

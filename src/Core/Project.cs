@@ -212,7 +212,7 @@ namespace Ro2rwPc
                             {
                                 var b = File.ReadAllBytes(f.Path);
                                 var r = LkPatcher.Patch(b, st.LkDelay, st.LkText, st.LkAndroid, Log);
-                                if (r.DelayPatched == 0 && r.TextsCleared == 0) throw new InvalidDataException("לא נמצא מה לתקן בקובץ ה-LK");
+                                if (r.DelayPatched == 0 && r.TextsCleared == 0 && r.WarningsPatched == 0) throw new InvalidDataException("לא נמצא מה לתקן בקובץ ה-LK");
                                 File.WriteAllBytes(outPath, b);
                                 break;
                             }

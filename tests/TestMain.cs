@@ -147,7 +147,7 @@ static class TestMain
                         var b = File.ReadAllBytes(a[1]);
                         var r = LkPatcher.Patch(b, true, false, int.Parse(a[3]), Console.WriteLine);
                         File.WriteAllBytes(a[2], b);
-                        Console.WriteLine("delay=" + r.DelayPatched);
+                        Console.WriteLine("delay=" + r.DelayPatched + " warn=" + r.WarningsPatched + " cats=" + string.Join(",", r.Categories.ToArray()));
                         return 0;
                     }
                 case "hex":
