@@ -536,6 +536,7 @@ namespace Ro2rwPc
             mDev.DropDownItems.Add("צרוב חזרה את תיקיית \"ערוך\"...", null, (s, e) => FlashBack(null, true, null));
             mDev.DropDownItems.Add("צרוב קבצים נבחרים...", null, (s, e) => FlashPickFiles());
             mDev.DropDownItems.Add("פתח ב-SP Flash Tool (צריבה ידנית)...", null, (s, e) => OpenInSpTool());
+            mDev.DropDownItems.Add("מדריך SP Flash Tool (צריבה + גיבוי)...", null, (s, e) => ShowSpGuide());
             mDev.DropDownItems.Add(new ToolStripSeparator());
             mDev.DropDownItems.Add("התקן דרייבר USB (UsbDk)", null, (s, e) => InstallDriver());
             mDev.DropDownItems.Add(new ToolStripSeparator());
@@ -994,13 +995,15 @@ namespace Ro2rwPc
             try { Process.Start(new ProcessStartInfo(sptoolPath) { UseShellExecute = true, WorkingDirectory = Path.GetDirectoryName(sptoolPath) }); }
             catch (Exception ex) { Msg(this, "לא ניתן להפעיל את SP Flash Tool: " + ex.Message, MessageBoxIcon.Error); return; }
             Log("SP Flash Tool נפתחה. נתיב ה-scatter הועתק ללוח: " + scatter, Color.LightGreen);
-            Msg(this,
-                "ב-SP Flash Tool:\n" +
-                "1. לחץ \"Scatter-loading\" ובחר את הקובץ שסומן בתיקייה שנפתחה\n   (הנתיב כבר בלוח - אפשר להדביק עם Ctrl+V).\n" +
-                "2. ודא שמסומנות רק המחיצות שערכת.\n" +
-                "3. בחר \"Download Only\" ולחץ Download.\n" +
-                "4. חבר את המכשיר כבוי (עם דרייבר ה-VCOM של MediaTek).\n\n" +
-                "⚠️ גבה את המכשיר לפני הצריבה.");
+            using (var g = new SpGuideForm(folder, Directory.GetFiles(folder).Where(f => { var e2 = Path.GetExtension(f).ToLowerInvariant(); return e2 == ".img" || e2 == ".bin"; }), scatter)) g.ShowDialog(this);
+        }
+
+        void ShowSpGuide()
+        {
+            string folder = project != null && Directory.Exists(project.Edited) ? project.Edited : null;
+            var files = folder != null ? Directory.GetFiles(folder).Where(f => { var e = Path.GetExtension(f).ToLowerInvariant(); return e == ".img" || e == ".bin"; }) : Enumerable.Empty<string>();
+            string scatter = folder != null ? Directory.GetFiles(folder, "*scatter*.txt").OrderBy(x => x).FirstOrDefault() : null;
+            using (var g = new SpGuideForm(folder, files, scatter)) g.ShowDialog(this);
         }
 
         // ------------------------------------------------------------ settings persistence

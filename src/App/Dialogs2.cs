@@ -322,3 +322,77 @@ SP Flash Tool (מכשירים שרק דרייבר VCOM קולט): התקן או�
         };
     }
 }
+
+namespace Ro2rwPc
+{
+    /// <summary>Step-by-step guide for flashing already-edited files and backing up with SP Flash Tool.</summary>
+    public sealed class SpGuideForm : Form
+    {
+        public SpGuideForm(string editedFolder, IEnumerable<string> editedFiles, string scatterPath)
+        {
+            Ui.Rtl(this);
+            Text = "SP Flash Tool - צריבה וגיבוי (בלי לערוך מחדש)";
+            ClientSize = new Size(760, 600);
+            StartPosition = FormStartPosition.CenterParent;
+            var tabs = new TabControl { Dock = DockStyle.Fill, RightToLeftLayout = true };
+
+            string files = editedFiles != null && editedFiles.Any()
+                ? string.Join("\n", editedFiles.Select(f => "   • " + Path.GetFileName(f)))
+                : "   (לא נמצאו קבצים ערוכים - בצע עריכה קודם)";
+            string edDir = editedFolder ?? "התיקייה \"ערוך\" שבתוך הפרויקט";
+            string scat = scatterPath != null ? Path.GetFileName(scatterPath) : "(אין scatter - ראו הערה למטה)";
+
+            tabs.TabPages.Add(Page("צריבת מה שכבר ערכת",
+"אתה לא צריך לערוך מחדש! הקבצים הערוכים כבר מוכנים ב:\n" + edDir + "\n\n" +
+"קבצים ערוכים:\n" + files + "\n\n" +
+"--- דרך א' (הכי פשוט, אם יש scatter בתיקייה \"ערוך\"): ---\n" +
+"1. פתח SP Flash Tool והתקן את דרייבר ה-VCOM של MediaTek.\n" +
+"2. Scatter-loading ← בחר את הקובץ: " + scat + "\n   (הנתיב שלו הועתק ללוח - אפשר Ctrl+V).\n" +
+"3. מסומנות רק המחיצות שערכת. בחר \"Download Only\".\n" +
+"4. לחץ Download, חבר את המכשיר כבוי, חכה לסיום.\n\n" +
+"--- דרך ב' (אם אין scatter, אבל יש לך את ה-scatter של הקושחה): ---\n" +
+"1. ב-SP Flash Tool טען את ה-scatter של הקושחה המקורית.\n" +
+"2. בטבלה, לכל מחיצה שערכת (boot / vbmeta / lk / super) - לחיצה כפולה על השורה\n" +
+"   ובחר את הקובץ הערוך מתוך התיקייה \"ערוך\".\n" +
+"3. הסר סימון מכל שאר המחיצות (שלא ערכת, ובמיוחד preloader).\n" +
+"4. Download Only ← Download.\n\n" +
+"⚠️ אל תצרוב preloader. ⚠️ גבה את המכשיר קודם (ראה לשונית \"גיבוי\")."));
+
+            tabs.TabPages.Add(Page("גיבוי (ReadBack)",
+"גיבוי מלא לפני צריבה, במכשיר שרק SP Flash Tool קולט:\n\n" +
+"1. ב-SP Flash Tool טען scatter (כל scatter תקין של המכשיר נותן את הכתובות).\n" +
+"2. עבור ללשונית ReadBack ← Add.\n" +
+"3. לחיצה כפולה על השורה ← בחר נתיב לשמירת הגיבוי.\n" +
+"4. בחלון שנפתח:\n" +
+"      Region = EMMC_USER\n" +
+"      Start Address = 0x0\n" +
+"      Length = גודל כל הזיכרון של המכשיר\n" +
+"   (אם לא יודעים את הגודל - משתמשים ב-WwR כדי לקרוא אותו, או משאירים את ברירת המחדל).\n" +
+"5. לחץ ReadBack (החץ הירוק), חבר את המכשיר כבוי.\n" +
+"6. המתן 15-35 דקות. אל תנתק.\n\n" +
+"גיבוי של מחיצה אחת בלבד: ב-ReadBack הזן את Start Address והגודל של אותה מחיצה\n" +
+"(מופיעים ב-scatter: linear_start_addr ו-partition_size). הרבה יותר מהיר.\n\n" +
+"הערה: את הגיבוי הגולמי אפשר לפצל חזרה למחיצות עם הכלי WwR."));
+
+            tabs.TabPages.Add(Page("למה רק SP?",
+"במכשיר שלך רק דרייבר ה-VCOM של SP Flash Tool קולט את המכשיר.\n" +
+"mtkclient והמנוע המהיר עובדים דרך UsbDk, ולכן הם נתקעים בשלב \"sending image data\"\n" +
+"כשה-USB לא משלים את ההעברה. זו מגבלה של המכשיר מול UsbDk, לא תקלה בתוכנה.\n\n" +
+"לכן במכשיר הזה: עורכים ב-RO2RW PC (על המחשב, בלי מכשיר), ומעבירים את התוצאה\n" +
+"מהתיקייה \"ערוך\" ל-SP Flash Tool לצריבה ולגיבוי. כפתור \"פתח ב-SP Flash Tool\"\n" +
+"עושה בשבילך את הצעד הראשון."));
+
+            Controls.Add(tabs);
+            var close = new Button { Text = "סגור", Dock = DockStyle.Bottom, Height = 36 };
+            close.Click += (s, e) => Close();
+            Controls.Add(close);
+        }
+
+        static TabPage Page(string title, string body)
+        {
+            var p = new TabPage(title);
+            p.Controls.Add(new RichTextBox { Dock = DockStyle.Fill, ReadOnly = true, Text = body, Font = new Font("Segoe UI", 11f), BorderStyle = BorderStyle.None, BackColor = SystemColors.Window, RightToLeft = RightToLeft.Yes });
+            return p;
+        }
+    }
+}
