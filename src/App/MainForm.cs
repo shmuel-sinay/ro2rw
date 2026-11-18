@@ -14,10 +14,11 @@ namespace Ro2rwPc
         readonly Font fBase = new Font("Segoe UI", 10f);
         readonly Font fBold = new Font("Segoe UI", 10f, FontStyle.Bold);
         readonly Font fTitle = new Font("Segoe UI", 15f, FontStyle.Bold);
+        readonly Font fHead = new Font("Segoe UI", 13f, FontStyle.Bold);
 
         ComboBox cmbProject;
         Button btnWizard, btnFlash, btnPlan, btnSp;
-        ToolStripMenuItem miEngMtk, miEngFast, miEngSerial;
+        ToolStripMenuItem miEngMtk, miEngFast, miEngSerial, miEngSp;
         Form logWin; RichTextBox logWinBox;
         CheckBox cbRecovery, cbPatchVbFlag;
         ComboBox cmbLkAndroid, cmbVbMode;
@@ -42,6 +43,12 @@ namespace Ro2rwPc
         CheckBox cbLkDelay, cbLkText;
         ProgressBar prog;
         RichTextBox log;
+        // new: tabbed UI
+        TabControl tabs;
+        ComboBox cmbFileRo2rw, cmbFileMagisk, cmbFileAvb, cmbFileLk;
+        Button btnRunRo2rw, btnRunMagisk, btnRunAvb, btnRunLk, btnDumpGo, btnFlashEdited, btnFlashPick;
+        ComboBox cmbEngineDump, cmbEngineFlash;
+        bool engineUiUpdating;
 
         Project project;
         List<ProjectFile> files = new List<ProjectFile>();
@@ -55,122 +62,179 @@ namespace Ro2rwPc
             RightToLeft = RightToLeft.Yes;
             RightToLeftLayout = true;
             AutoScaleMode = AutoScaleMode.Dpi;
-            ClientSize = new Size(1000, 800);
-            MinimumSize = new Size(960, 760);
+            ClientSize = new Size(1040, 820);
+            MinimumSize = new Size(900, 680);
             StartPosition = FormStartPosition.CenterScreen;
             AllowDrop = true;
             DragEnter += (s, e) => { if (e.Data.GetDataPresent(DataFormats.FileDrop)) e.Effect = DragDropEffects.Copy; };
             DragDrop += (s, e) => { var f = (string[])e.Data.GetData(DataFormats.FileDrop); if (f != null) AddFiles(f); };
             try { Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
-            Build();
-            WrapWithMenu();
+            BuildUi();
             SetupTooltips();
             ApplyTheme();
             Load += (s, e) => FitToScreen();
             LoadUiSettings();
             FormClosing += (s, e) => SaveUiSettings();
             LoadProjects(null);
-            Log("ברוך הבא! הכי פשוט: לחץ \"אשף\" והוא יעבור איתך על הכול, שלב אחרי שלב.", Color.LightGreen);
-            Log("או ידנית: צור פרויקט (שם המכשיר), הוסף קבצי רום, סמן מה לערוך ולחץ \"בצע עריכה\". כלים בודדים נמצאים בתפריט \"כלים\".", Color.LightGreen);
+            Log("ברוך הבא! למעלה יש לשונית לכל כלי. הכי פשוט: לחץ \"אשף\" והוא יעבור איתך על הכול.", Color.LightGreen);
+            Log("זרימה ידנית: לשונית \"פרויקט וקבצים\" ← הוסף קבצים (או שאב מהמכשיר) ← עבור ללשונית הכלי (RO2RW / Root / AVB / LK) ← \"בצע\".", Color.LightGreen);
             Log("הקבצים הערוכים נשמרים בתיקייה \"ערוך\" שבתוך הפרויקט, עם אותם שמות. המקור לא משתנה.", Color.LightGreen);
-            Log("אפשר גם לשאוב רום מלא מהמכשיר (MTK) ישירות לתוך הפרויקט, בכפתור \"שאב רום מהמכשיר\".", Color.LightGreen);
+            Log("צריבה ושאיבה: לשוניות \"שאיבה\" ו\"צריבה\". בחר מנוע - כולל \"SP Flash Tool\" שעובד עם דרייבר ה-VCOM.", Color.LightGreen);
         }
 
-        // ------------------------------------------------------------ UI
-        void Build()
+        // ============================================================ UI
+        void BuildUi()
         {
-            Controls.Add(new Label { Text = "RO2RW PC", Font = fTitle, AutoSize = true, Location = new Point(14, 8), ForeColor = Accent });
-            Controls.Add(new Label { Text = "RO2RW, Root עם Magisk, ביטול AVB והסרת Orange State - הכול על המחשב", AutoSize = true, Location = new Point(16, 42), ForeColor = Color.FromArgb(110, 119, 129) });
+            BuildMenu();
 
-            // project bar
-            var gp = new GroupBox { Text = "פרויקט (מכשיר)", Location = new Point(12, 68), Size = new Size(976, 104) };
-            cmbProject = new ComboBox { Location = new Point(14, 26), Size = new Size(250, 28), DropDownStyle = ComboBoxStyle.DropDownList };
+            var root = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 4, Padding = new Padding(8, 4, 8, 4) };
+            root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            root.RowStyles.Add(new RowStyle(SizeType.AutoSize));          // project bar
+            root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));      // tabs
+            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 168));     // log
+            root.RowStyles.Add(new RowStyle(SizeType.AutoSize));          // status
+
+            root.Controls.Add(BuildProjectBar(), 0, 0);
+
+            tabs = new TabControl { Dock = DockStyle.Fill, RightToLeftLayout = true, Padding = new Point(16, 6) };
+            tabs.TabPages.Add(BuildFilesTab());
+            tabs.TabPages.Add(BuildRo2rwTab());
+            tabs.TabPages.Add(BuildMagiskTab());
+            tabs.TabPages.Add(BuildAvbTab());
+            tabs.TabPages.Add(BuildLkTab());
+            tabs.TabPages.Add(BuildDumpTab());
+            tabs.TabPages.Add(BuildFlashTab());
+            tabs.TabPages.Add(BuildSpTab());
+            tabs.TabPages.Add(BuildToolsTab());
+            root.Controls.Add(tabs, 0, 1);
+
+            log = new RichTextBox
+            {
+                Dock = DockStyle.Fill, ReadOnly = true, BackColor = Color.FromArgb(24, 24, 28), ForeColor = Color.Gainsboro,
+                Font = new Font("Consolas", 10f), RightToLeft = RightToLeft.Yes, BorderStyle = BorderStyle.None
+            };
+            log.DoubleClick += (s, e) => OpenLogWindow();
+            var logBox = new Panel { Dock = DockStyle.Fill, Padding = new Padding(1), BackColor = Color.FromArgb(24, 24, 28) };
+            logBox.Controls.Add(log);
+            root.Controls.Add(logBox, 0, 2);
+
+            root.Controls.Add(BuildStatusBar(), 0, 3);
+
+            Controls.Add(root);
+            Controls.Add(menu);
+            MainMenuStrip = menu;
+
+            BuildFileContextMenu();
+        }
+
+        Control BuildProjectBar()
+        {
+            var p = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, FlowDirection = FlowDirection.RightToLeft, WrapContents = true, Margin = new Padding(0, 0, 0, 4) };
+            var title = new Label { Text = "RO2RW PC", Font = fTitle, AutoSize = true, ForeColor = Accent, Margin = new Padding(6, 6, 6, 0) };
+            cmbProject = new ComboBox { Size = new Size(220, 28), DropDownStyle = ComboBoxStyle.DropDownList, Margin = new Padding(6, 8, 6, 0) };
             cmbProject.SelectedIndexChanged += (s, e) => { if (cmbProject.SelectedItem != null) OpenProject((string)cmbProject.SelectedItem); };
-            btnNewProj = new Button { Text = "פרויקט חדש...", Location = new Point(274, 24), Size = new Size(130, 32) };
+            btnNewProj = new Button { Text = "פרויקט חדש", Size = new Size(120, 32), Margin = new Padding(4, 6, 4, 0) };
             btnNewProj.Click += (s, e) => NewProject();
-            btnOpenDir = new Button { Text = "פתח תיקייה", Location = new Point(412, 24), Size = new Size(110, 32) };
+            btnOpenDir = new Button { Text = "פתח תיקייה", Size = new Size(100, 32), Margin = new Padding(4, 6, 4, 0) };
             btnOpenDir.Click += (s, e) => { if (project != null) Process.Start("explorer.exe", "\"" + project.Root + "\""); };
-            btnOpenEdited = new Button { Text = "פתח \"ערוך\"", Location = new Point(530, 24), Size = new Size(110, 32) };
+            btnOpenEdited = new Button { Text = "פתח \"ערוך\"", Size = new Size(100, 32), Margin = new Padding(4, 6, 4, 0) };
             btnOpenEdited.Click += (s, e) => { if (project != null) Process.Start("explorer.exe", "\"" + project.Edited + "\""); };
-            lblProj = new Label { Location = new Point(650, 30), Size = new Size(316, 24), ForeColor = Color.DimGray, AutoEllipsis = true };
-            btnDump = new Button { Text = "⬇ שאב רום מהמכשיר (mtkclient)", Location = new Point(14, 62), Size = new Size(250, 32), Font = fBold };
-            btnDump.Click += (s, e) => DumpRom();
-            cbSkipUserdata = new CheckBox { Text = "בלי userdata", Location = new Point(274, 67), Size = new Size(120, 24), Checked = true };
-            btnDriver = new Button { Text = "דרייבר USB", Location = new Point(400, 62), Size = new Size(110, 32) };
-            btnDriver.Click += (s, e) => InstallDriver();
-            lblStatus = new Label { Location = new Point(520, 68), Size = new Size(446, 24), ForeColor = Color.DimGray, AutoEllipsis = true, RightToLeft = RightToLeft.No };
-            gp.Controls.AddRange(new Control[] { cmbProject, btnNewProj, btnOpenDir, btnOpenEdited, lblProj, btnDump, cbSkipUserdata, btnDriver, lblStatus });
-            Controls.Add(gp);
+            btnWizard = new Button { Text = "🧙 אשף", Size = new Size(110, 32), Margin = new Padding(4, 6, 4, 0), BackColor = Color.FromArgb(21, 101, 192), ForeColor = Color.White, FlatStyle = FlatStyle.Flat, Font = fBold };
+            btnWizard.Click += (s, e) => RunWizard();
+            lblProj = new Label { AutoSize = true, ForeColor = Color.DimGray, Margin = new Padding(6, 12, 6, 0), MaximumSize = new Size(360, 24), AutoEllipsis = true };
+            p.Controls.AddRange(new Control[] { title, new Label { Text = "פרויקט:", AutoSize = true, Margin = new Padding(6, 12, 2, 0) }, cmbProject, btnNewProj, btnOpenDir, btnOpenEdited, btnWizard, lblProj });
+            return p;
+        }
 
-            // files
-            var gf = new GroupBox { Text = "קבצי הרום בפרויקט (סמן מה לערוך)", Location = new Point(12, 178), Size = new Size(560, 316) };
-            lvFiles = new ListView { View = View.Details, CheckBoxes = true, FullRowSelect = true, Location = new Point(10, 24), Size = new Size(540, 242), RightToLeftLayout = true };
-            lvFiles.Columns.Add("קובץ", 150); lvFiles.Columns.Add("סוג", 90); lvFiles.Columns.Add("גודל", 80); lvFiles.Columns.Add("עריכה", 150); lvFiles.Columns.Add("ערוך", 50);
+        Control BuildStatusBar()
+        {
+            var p = new Panel { Dock = DockStyle.Fill, Height = 36, Margin = new Padding(0, 2, 0, 0) };
+            btnCancel = new Button { Text = "ביטול", Dock = DockStyle.Right, Width = 90, Enabled = false };
+            btnCancel.Click += (s, e) => { cancel = true; Log("מבטל...", Color.Khaki); };
+            prog = new ProgressBar { Dock = DockStyle.Right, Width = 300, Maximum = 1000, Margin = new Padding(4) };
+            var progHost = new Panel { Dock = DockStyle.Right, Width = 304, Padding = new Padding(2, 5, 2, 5) };
+            progHost.Controls.Add(prog); prog.Dock = DockStyle.Fill;
+            lblStatus = new Label { Dock = DockStyle.Fill, ForeColor = Color.DimGray, TextAlign = ContentAlignment.MiddleRight, AutoEllipsis = true, RightToLeft = RightToLeft.No, Padding = new Padding(8, 0, 8, 0) };
+            p.Controls.Add(lblStatus); p.Controls.Add(progHost); p.Controls.Add(btnCancel);
+            return p;
+        }
+
+        // ---- per-tool tab scaffolding ----
+        static TabPage ToolPage(string title) { return new TabPage(title) { BackColor = Bg, Padding = new Padding(10) }; }
+
+        static Label Head(string text) { return new Label { Text = text, Font = new Font("Segoe UI", 13f, FontStyle.Bold), AutoSize = true, Location = new Point(6, 4), ForeColor = Color.FromArgb(21, 101, 192) }; }
+
+        static Label Sub(string text, int y) { return new Label { Text = text, AutoSize = true, MaximumSize = new Size(640, 0), Location = new Point(6, y), ForeColor = Color.FromArgb(90, 99, 110) }; }
+
+        // a file-chooser row for a tool tab; fills from project files of the given kinds
+        ComboBox FileRow(TabPage t, int y, string label)
+        {
+            t.Controls.Add(new Label { Text = label, AutoSize = true, Location = new Point(6, y + 4) });
+            var cmb = new ComboBox { Location = new Point(120, y), Size = new Size(360, 28), DropDownStyle = ComboBoxStyle.DropDownList, DisplayMember = "Name" };
+            t.Controls.Add(cmb);
+            return cmb;
+        }
+
+        Button RunButton(TabPage t, string text, EventHandler onClick)
+        {
+            var b = new Button { Text = text, Size = new Size(220, 46), Font = new Font("Segoe UI", 12f, FontStyle.Bold), BackColor = Color.FromArgb(46, 125, 50), ForeColor = Color.White, FlatStyle = FlatStyle.Flat, Anchor = AnchorStyles.Bottom | AnchorStyles.Right };
+            b.Click += onClick;
+            t.Controls.Add(b);
+            t.Resize += (s, e) => b.Location = new Point(t.ClientSize.Width - b.Width - 14, t.ClientSize.Height - b.Height - 12);
+            b.Location = new Point(t.ClientSize.Width - b.Width - 14, t.ClientSize.Height - b.Height - 12);
+            return b;
+        }
+
+        TabPage BuildFilesTab()
+        {
+            var t = ToolPage("📁 פרויקט וקבצים");
+            lvFiles = new ListView { View = View.Details, CheckBoxes = true, FullRowSelect = true, Location = new Point(8, 36), Size = new Size(640, 300), RightToLeftLayout = true, Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right };
+            lvFiles.Columns.Add("קובץ", 180); lvFiles.Columns.Add("סוג", 110); lvFiles.Columns.Add("גודל", 90); lvFiles.Columns.Add("עריכה", 170); lvFiles.Columns.Add("ערוך", 50);
             lvFiles.ItemCheck += (s, e) =>
             {
                 var pf = lvFiles.Items[e.Index].Tag as ProjectFile;
                 if (pf == null || pf.Action == EditAction.None) e.NewValue = CheckState.Unchecked;
                 else pf.Selected = e.NewValue == CheckState.Checked;
             };
-            btnAddFiles = new Button { Text = "הוסף קבצים...", Location = new Point(10, 274), Size = new Size(130, 32) };
+            btnAddFiles = new Button { Text = "➕ הוסף קבצים", Location = new Point(8, 344), Size = new Size(130, 34), Anchor = AnchorStyles.Bottom | AnchorStyles.Left };
             btnAddFiles.Click += (s, e) => PickFiles();
-            btnRefresh = new Button { Text = "רענן", Location = new Point(148, 274), Size = new Size(70, 32) };
+            btnRefresh = new Button { Text = "רענן", Location = new Point(146, 344), Size = new Size(70, 34), Anchor = AnchorStyles.Bottom | AnchorStyles.Left };
             btnRefresh.Click += (s, e) => RefreshFiles();
-            var btnSelAll = new Button { Text = "סמן הכל", Location = new Point(226, 274), Size = new Size(90, 32) };
+            var btnSelAll = new Button { Text = "סמן הכל", Location = new Point(224, 344), Size = new Size(90, 34), Anchor = AnchorStyles.Bottom | AnchorStyles.Left };
             btnSelAll.Click += (s, e) => SelectAllFiles(true);
-            var btnSelNone = new Button { Text = "נקה הכל", Location = new Point(324, 274), Size = new Size(90, 32) };
+            var btnSelNone = new Button { Text = "נקה הכל", Location = new Point(322, 344), Size = new Size(90, 34), Anchor = AnchorStyles.Bottom | AnchorStyles.Left };
             btnSelNone.Click += (s, e) => SelectAllFiles(false);
-            var hint = new Label { Text = "קליק ימני על קובץ = אפשרויות", Location = new Point(420, 281), Size = new Size(130, 22), ForeColor = Color.DimGray };
-            gf.Controls.AddRange(new Control[] { lvFiles, btnAddFiles, btnRefresh, btnSelAll, btnSelNone, hint });
-            Controls.Add(gf);
-
-            // settings tabs
-            var tabs = new TabControl { Location = new Point(582, 178), Size = new Size(406, 316), RightToLeftLayout = true };
-            tabs.TabPages.Add(BuildRo2rwTab());
-            tabs.TabPages.Add(BuildMagiskTab());
-            tabs.TabPages.Add(BuildLkTab());
-            Controls.Add(tabs);
-
-            // run
-            btnWizard = new Button { Text = "🧙 אשף", Location = new Point(12, 502), Size = new Size(130, 44), Font = new Font("Segoe UI", 12f, FontStyle.Bold), BackColor = Color.FromArgb(21, 101, 192), ForeColor = Color.White, FlatStyle = FlatStyle.Flat };
-            btnWizard.Click += (s, e) => RunWizard();
-            btnRun = new Button { Text = "בצע עריכה", Location = new Point(150, 502), Size = new Size(160, 44), Font = new Font("Segoe UI", 12f, FontStyle.Bold), BackColor = Color.FromArgb(46, 125, 50), ForeColor = Color.White, FlatStyle = FlatStyle.Flat };
+            btnRun = new Button { Text = "בצע עריכה לכל המסומן", Location = new Point(428, 344), Size = new Size(220, 34), Font = fBold, BackColor = Color.FromArgb(46, 125, 50), ForeColor = Color.White, FlatStyle = FlatStyle.Flat, Anchor = AnchorStyles.Bottom | AnchorStyles.Right };
             btnRun.Click += (s, e) => RunEdits();
-            btnSp = new Button { Text = "📲 SP Flash Tool", Location = new Point(318, 502), Size = new Size(160, 44), Font = new Font("Segoe UI", 11f, FontStyle.Bold), BackColor = Color.FromArgb(21, 101, 192), ForeColor = Color.White, FlatStyle = FlatStyle.Flat };
-            btnSp.Click += (s, e) => SpFlashMenu();
-            btnFlash = new Button { Text = "⬆ צרוב (USB)", Location = new Point(484, 502), Size = new Size(120, 44), Font = new Font("Segoe UI", 10f, FontStyle.Bold), BackColor = Color.FromArgb(198, 40, 40), ForeColor = Color.White, FlatStyle = FlatStyle.Flat };
-            btnFlash.Click += (s, e) => FlashBack(null, true, null);
-            btnCancel = new Button { Text = "ביטול", Location = new Point(610, 502), Size = new Size(80, 44), Enabled = false };
-            btnCancel.Click += (s, e) => { cancel = true; Log("מבטל...", Color.Khaki); };
-            prog = new ProgressBar { Location = new Point(698, 512), Size = new Size(290, 26), Maximum = 1000 };
-            Controls.AddRange(new Control[] { btnWizard, btnRun, btnSp, btnFlash, btnCancel, prog });
-
-            log = new RichTextBox
-            {
-                // double-click opens the resizable log window (handy on small screens)
-
-                Location = new Point(12, 554), Size = new Size(976, 234), ReadOnly = true, BackColor = Color.FromArgb(24, 24, 28), ForeColor = Color.Gainsboro,
-                Font = new Font("Consolas", 10f), RightToLeft = RightToLeft.Yes, Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right
-            };
-            log.DoubleClick += (s, e) => OpenLogWindow();
-            Controls.Add(log);
+            t.Controls.Add(Head("קבצי הרום בפרויקט"));
+            t.Controls.Add(new Label { Text = "הוסף super / boot / init_boot / vbmeta / lk (כפתור או גרירה). לעריכה של כלי מסוים - עבור ללשונית שלו למעלה. כאן אפשר גם לסמן כמה ולערוך הכול יחד.", AutoSize = false, Size = new Size(640, 24), Location = new Point(6, 28), ForeColor = Color.FromArgb(90, 99, 110) });
+            // move the subtitle above the list
+            t.Controls[t.Controls.Count - 1].BringToFront();
+            lvFiles.Location = new Point(8, 56);
+            lvFiles.Size = new Size(640, 280);
+            t.Controls.AddRange(new Control[] { lvFiles, btnAddFiles, btnRefresh, btnSelAll, btnSelNone, btnRun });
+            return t;
         }
 
         TabPage BuildRo2rwTab()
         {
-            var t = new TabPage("RO2RW (super)");
-            rbMax = new RadioButton { Text = "אחוזים מהמקום הפנוי (MAX)", Location = new Point(10, 10), Size = new Size(370, 24), Checked = true };
-            int y = 38;
-            nS = Num(t, "System", 10, y, 70); nV = Num(t, "Vendor", 84, y, 10); nP = Num(t, "Product", 158, y, 10); nSE = Num(t, "Sys_ext", 232, y, 5); nOT = Num(t, "אחרות", 306, y, 5);
-            lblTotal = new Label { Location = new Point(10, 90), Size = new Size(370, 22) };
-            rbFixed = new RadioButton { Text = "גודל קבוע לכל מחיצה (FIXED), MB:", Location = new Point(10, 118), Size = new Size(260, 24) };
-            nFixed = new NumericUpDown { Location = new Point(276, 117), Size = new Size(90, 26), Maximum = 100000, Value = 200 };
-            cbSparse = new CheckBox { Text = "פלט sparse (קטן יותר)", Location = new Point(10, 154), Size = new Size(370, 24), Checked = true };
-            cbFstab = new CheckBox { Text = "הוסף שורות ext4 ל-fstab של vendor", Location = new Point(10, 180), Size = new Size(370, 24), Checked = true };
-            cbNoWifi = new CheckBox { Text = "הסר WiFi (מכשיר מסונן - מוחק wpa_supplicant מ-vendor)", Location = new Point(10, 204), Size = new Size(370, 24) };
-            btnPlan = new Button { Text = "תכנון מפורט לפי מחיצה...", Location = new Point(10, 232), Size = new Size(230, 32) };
-            btnPlan.Click += (s, e) => OpenSuperPlan(null);
+            var t = ToolPage("RO2RW (super)");
+            t.Controls.Add(Head("RO2RW - super לקריאה-וכתיבה"));
+            t.Controls.Add(Sub("ממיר את super.img מ-EROFS / ext4 לקריאה-בלבד ל-ext4 לקריאה-וכתיבה, עם מקום פנוי להוסיף אפליקציות מערכת.", 34));
+            cmbFileRo2rw = FileRow(t, 62, "קובץ super:");
+            rbMax = new RadioButton { Text = "אחוזים מהמקום הפנוי (MAX)", Location = new Point(6, 100), Size = new Size(370, 24), Checked = true };
+            int y = 128;
+            nS = Num(t, "System", 6, y, 70); nV = Num(t, "Vendor", 80, y, 10); nP = Num(t, "Product", 154, y, 10); nSE = Num(t, "Sys_ext", 228, y, 5); nOT = Num(t, "אחרות", 302, y, 5);
+            lblTotal = new Label { Location = new Point(6, 180), Size = new Size(420, 22) };
+            rbFixed = new RadioButton { Text = "גודל קבוע לכל מחיצה (FIXED), MB:", Location = new Point(6, 208), Size = new Size(260, 24) };
+            nFixed = new NumericUpDown { Location = new Point(272, 207), Size = new Size(90, 26), Maximum = 100000, Value = 200 };
+            cbSparse = new CheckBox { Text = "פלט sparse (קטן יותר)", Location = new Point(6, 244), Size = new Size(370, 24), Checked = true };
+            cbFstab = new CheckBox { Text = "הוסף שורות ext4 ל-fstab של vendor", Location = new Point(6, 270), Size = new Size(420, 24), Checked = true };
+            cbNoWifi = new CheckBox { Text = "הסר WiFi (מכשיר מסונן - מוחק wpa_supplicant מ-vendor)", Location = new Point(6, 296), Size = new Size(480, 24) };
+            btnPlan = new Button { Text = "תכנון מפורט לפי מחיצה...", Location = new Point(6, 326), Size = new Size(230, 32) };
+            btnPlan.Click += (s, e) => OpenSuperPlan(SelectedToolPath(cmbFileRo2rw));
             t.Controls.AddRange(new Control[] { rbMax, lblTotal, rbFixed, nFixed, cbSparse, cbFstab, cbNoWifi, btnPlan });
+            btnRunRo2rw = RunButton(t, "בצע RO2RW", (s, e) => RunToolOnTab(EditAction.Ro2rw, cmbFileRo2rw, "בחר super.img"));
             EventHandler upd = (s, e) => UpdateSizeUi();
             foreach (var n in new[] { nS, nV, nP, nSE, nOT }) n.ValueChanged += upd;
             rbMax.CheckedChanged += upd;
@@ -180,42 +244,153 @@ namespace Ro2rwPc
 
         TabPage BuildMagiskTab()
         {
-            var t = new TabPage("Magisk");
-            t.Controls.Add(new Label { Text = "ABI של המכשיר:", Location = new Point(10, 14), Size = new Size(110, 24) });
-            cmbAbi = new ComboBox { Location = new Point(124, 10), Size = new Size(150, 28), DropDownStyle = ComboBoxStyle.DropDownList };
+            var t = ToolPage("Root (Magisk)");
+            t.Controls.Add(Head("Root עם Magisk"));
+            t.Controls.Add(Sub("עריכת boot / init_boot על המחשב, בדיוק כמו אפליקציית Magisk. אחרי הצריבה מתקינים את אפליקציית Magisk בטלפון.", 34));
+            cmbFileMagisk = FileRow(t, 62, "קובץ boot:");
+            t.Controls.Add(new Label { Text = "ABI של המכשיר:", Location = new Point(6, 104), Size = new Size(110, 24) });
+            cmbAbi = new ComboBox { Location = new Point(120, 100), Size = new Size(150, 28), DropDownStyle = ComboBoxStyle.DropDownList };
             cmbAbi.Items.AddRange(new object[] { "auto", "arm64-v8a", "armeabi-v7a", "x86_64", "x86" });
             cmbAbi.SelectedIndex = 0;
-            cbKeepVerity = new CheckBox { Text = "השאר verity (KEEPVERITY)", Location = new Point(10, 48), Size = new Size(370, 24) };
-            cbKeepEnc = new CheckBox { Text = "השאר הצפנה כפויה (KEEPFORCEENCRYPT)", Location = new Point(10, 74), Size = new Size(370, 24) };
-            cbRecovery = new CheckBox { Text = "מצב recovery (RECOVERYMODE)", Location = new Point(10, 100), Size = new Size(370, 24) };
-            cbPatchVbFlag = new CheckBox { Text = "כבה אימות ב-vbmeta של ה-boot (PATCHVBMETAFLAG)", Location = new Point(10, 126), Size = new Size(380, 24) };
-            lblMagisk = new Label { Location = new Point(10, 156), Size = new Size(376, 88), ForeColor = Color.DimGray };
-            var btnApk = new Button { Text = "בחר Magisk.apk אחר...", Location = new Point(10, 248), Size = new Size(180, 30) };
+            cbKeepVerity = new CheckBox { Text = "השאר verity (KEEPVERITY)", Location = new Point(6, 136), Size = new Size(370, 24) };
+            cbKeepEnc = new CheckBox { Text = "השאר הצפנה כפויה (KEEPFORCEENCRYPT)", Location = new Point(6, 162), Size = new Size(420, 24) };
+            cbRecovery = new CheckBox { Text = "מצב recovery (RECOVERYMODE)", Location = new Point(6, 188), Size = new Size(370, 24) };
+            cbPatchVbFlag = new CheckBox { Text = "כבה אימות ב-vbmeta של ה-boot (PATCHVBMETAFLAG)", Location = new Point(6, 214), Size = new Size(430, 24) };
+            lblMagisk = new Label { Location = new Point(6, 244), Size = new Size(500, 70), ForeColor = Color.DimGray };
+            var btnApk = new Button { Text = "בחר Magisk.apk אחר...", Location = new Point(6, 320), Size = new Size(190, 30) };
             btnApk.Click += (s, e) => PickMagiskApk();
-            var btnVer = new Button { Text = "הורד גרסה (למשל 26)...", Location = new Point(196, 248), Size = new Size(190, 30) };
+            var btnVer = new Button { Text = "הורד גרסה (למשל 26)...", Location = new Point(202, 320), Size = new Size(190, 30) };
             btnVer.Click += (s, e) => DownloadMagiskVersion();
             t.Controls.AddRange(new Control[] { cmbAbi, cbKeepVerity, cbKeepEnc, cbRecovery, cbPatchVbFlag, lblMagisk, btnApk, btnVer });
+            btnRunMagisk = RunButton(t, "בצע Root", (s, e) => RunToolOnTab(EditAction.Magisk, cmbFileMagisk, "בחר boot.img או init_boot.img"));
             UpdateMagiskLabel();
+            return t;
+        }
+
+        TabPage BuildAvbTab()
+        {
+            var t = ToolPage("AVB (vbmeta)");
+            t.Controls.Add(Head("ביטול AVB"));
+            t.Controls.Add(Sub("מכבה את האימות ב-vbmeta. \"הכול\" שווה ערך ל-fastboot --disable-verity --disable-verification. מבוסס על AVB-Disabler, hex-replacer ו-hovatek.", 34));
+            cmbFileAvb = FileRow(t, 70, "קובץ vbmeta:");
+            t.Controls.Add(new Label { Text = "מה לכבות:", Location = new Point(6, 116), Size = new Size(110, 24) });
+            cmbVbMode = new ComboBox { Location = new Point(120, 112), Size = new Size(260, 28), DropDownStyle = ComboBoxStyle.DropDownList };
+            cmbVbMode.Items.AddRange(new object[] { "הכול (verity + verification)", "רק verity (hashtree)", "רק verification (חתימות)" });
+            cmbVbMode.SelectedIndex = 0;
+            t.Controls.Add(cmbVbMode);
+            btnRunAvb = RunButton(t, "בצע ביטול AVB", (s, e) => RunToolOnTab(EditAction.Vbmeta, cmbFileAvb, "בחר vbmeta.img"));
             return t;
         }
 
         TabPage BuildLkTab()
         {
-            var t = new TabPage("LK / vbmeta");
-            cbLkDelay = new CheckBox { Text = "בטל את ההשהיה של 5 שניות (Orange State)", Location = new Point(10, 12), Size = new Size(380, 24), Checked = true };
-            cbLkText = new CheckBox { Text = "מחק את טקסט האזהרה מהמסך", Location = new Point(10, 40), Size = new Size(380, 24), Checked = true };
-            var l1 = new Label { Text = "גרסת אנדרואיד:", Location = new Point(10, 74), Size = new Size(120, 24) };
-            cmbLkAndroid = new ComboBox { Location = new Point(134, 70), Size = new Size(200, 28), DropDownStyle = ComboBoxStyle.DropDownList };
+            var t = ToolPage("LK / Orange State");
+            t.Controls.Add(Head("LK - הסרת Orange State"));
+            t.Controls.Add(Sub("מסיר את ההשהיה ואת טקסט האזהרה בהפעלה, וכולל תיקוני dm_verity / fastboot-unlock / red_state (מקור lkpatcher) - מה שגורם למכשיר לדרוש לחיצה כדי לדלוק.", 34));
+            cmbFileLk = FileRow(t, 76, "קובץ lk:");
+            cbLkDelay = new CheckBox { Text = "בטל את ההשהיה של 5 שניות (Orange State)", Location = new Point(6, 120), Size = new Size(400, 24), Checked = true };
+            cbLkText = new CheckBox { Text = "מחק את טקסט האזהרה מהמסך", Location = new Point(6, 148), Size = new Size(400, 24), Checked = true };
+            t.Controls.Add(new Label { Text = "גרסת אנדרואיד:", Location = new Point(6, 184), Size = new Size(120, 24) });
+            cmbLkAndroid = new ComboBox { Location = new Point(130, 180), Size = new Size(200, 28), DropDownStyle = ComboBoxStyle.DropDownList };
             cmbLkAndroid.Items.AddRange(new object[] { "זיהוי אוטומטי", "אנדרואיד 9 ומטה", "אנדרואיד 10 ומעלה" });
             cmbLkAndroid.SelectedIndex = 0;
-            var sep = new Label { Location = new Point(10, 112), Size = new Size(380, 2), BorderStyle = BorderStyle.Fixed3D };
-            var l2 = new Label { Text = "vbmeta - מה לכבות:", Location = new Point(10, 128), Size = new Size(140, 24) };
-            cmbVbMode = new ComboBox { Location = new Point(154, 124), Size = new Size(230, 28), DropDownStyle = ComboBoxStyle.DropDownList };
-            cmbVbMode.Items.AddRange(new object[] { "הכול (verity + verification)", "רק verity (hashtree)", "רק verification (חתימות)" });
-            cmbVbMode.SelectedIndex = 0;
-            var l3 = new Label { Text = "\"הכול\" שווה ערך ל-fastboot --disable-verity --disable-verification. מבוסס על AVB-Disabler, hex-replacer ו-hovatek.", Location = new Point(10, 162), Size = new Size(380, 60), ForeColor = Color.DimGray };
-            t.Controls.AddRange(new Control[] { cbLkDelay, cbLkText, l1, cmbLkAndroid, sep, l2, cmbVbMode, l3 });
+            t.Controls.AddRange(new Control[] { cbLkDelay, cbLkText, cmbLkAndroid });
+            btnRunLk = RunButton(t, "בצע LK", (s, e) => RunToolOnTab(EditAction.Lk, cmbFileLk, "בחר lk.img"));
             return t;
+        }
+
+        TabPage BuildDumpTab()
+        {
+            var t = ToolPage("⬇ שאיבה");
+            t.Controls.Add(Head("שאיבת רום מהמכשיר"));
+            t.Controls.Add(Sub("שואב את כל המחיצות מהמכשיר (MediaTek) לתוך הפרויקט, בשמות המחיצות, ויוצר scatter. שאיבה היא קריאה בלבד - לא משנה דבר במכשיר.", 34));
+            t.Controls.Add(new Label { Text = "מנוע:", Location = new Point(6, 76), Size = new Size(60, 24) });
+            cmbEngineDump = new ComboBox { Location = new Point(70, 72), Size = new Size(360, 28), DropDownStyle = ComboBoxStyle.DropDownList };
+            cmbEngineDump.Items.AddRange(EngineItems());
+            cmbEngineDump.SelectedIndex = 0;
+            cmbEngineDump.SelectedIndexChanged += (s, e) => { if (!engineUiUpdating) SetEngineByIndex(cmbEngineDump.SelectedIndex); };
+            cbSkipUserdata = new CheckBox { Text = "בלי userdata (מומלץ - מחיצה ענקית עם מידע אישי)", Location = new Point(6, 112), Size = new Size(460, 24), Checked = true };
+            t.Controls.Add(Sub("איך: כבה את המכשיר לגמרי, לחץ \"שאב\", ואז החזק את לחצני העוצמה וחבר כבל. אל תנתק עד הסוף.", 148));
+            btnDriver = new Button { Text = "התקן דרייבר USB (UsbDk)", Location = new Point(6, 190), Size = new Size(230, 32) };
+            btnDriver.Click += (s, e) => InstallDriver();
+            // legacy alias so existing code paths keep working
+            btnDump = new Button { Visible = false };
+            btnDump.Click += (s, e) => DumpRom();
+            t.Controls.AddRange(new Control[] { cmbEngineDump, cbSkipUserdata, btnDriver, btnDump });
+            btnDumpGo = RunButton(t, "⬇ שאב רום מהמכשיר", (s, e) => DumpRom());
+            btnDumpGo.BackColor = Color.FromArgb(21, 101, 192);
+            return t;
+        }
+
+        TabPage BuildFlashTab()
+        {
+            var t = ToolPage("⬆ צריבה");
+            t.Controls.Add(Head("צריבה חזרה למכשיר"));
+            t.Controls.Add(Sub("צורב את הקבצים הערוכים חזרה למכשיר. ⚠️ גבה את המכשיר לפני הצריבה. שמות המחיצות נבדקים מול gpt.bin; מחיצות רגישות חסומות.", 34));
+            t.Controls.Add(new Label { Text = "מנוע:", Location = new Point(6, 80), Size = new Size(60, 24) });
+            cmbEngineFlash = new ComboBox { Location = new Point(70, 76), Size = new Size(360, 28), DropDownStyle = ComboBoxStyle.DropDownList };
+            cmbEngineFlash.Items.AddRange(EngineItems());
+            cmbEngineFlash.SelectedIndex = 0;
+            cmbEngineFlash.SelectedIndexChanged += (s, e) => { if (!engineUiUpdating) SetEngineByIndex(cmbEngineFlash.SelectedIndex); };
+            btnFlashEdited = new Button { Text = "⬆ צרוב את תיקיית \"ערוך\"", Location = new Point(6, 120), Size = new Size(260, 42), Font = fBold, BackColor = Color.FromArgb(198, 40, 40), ForeColor = Color.White, FlatStyle = FlatStyle.Flat };
+            btnFlashEdited.Click += (s, e) => FlashBack(null, true, null);
+            btnFlashPick = new Button { Text = "צרוב קבצים נבחרים...", Location = new Point(276, 120), Size = new Size(200, 42) };
+            btnFlashPick.Click += (s, e) => FlashPickFiles();
+            // legacy alias
+            btnFlash = new Button { Visible = false };
+            btnFlash.Click += (s, e) => FlashBack(null, true, null);
+            t.Controls.Add(Sub("בחירת מנוע \"SP Flash Tool\" מריצה את SP אוטומטית (Download Only). זה המנוע שעובד עם דרייבר ה-VCOM, גם כשאין UsbDk.", 176));
+            t.Controls.AddRange(new Control[] { cmbEngineFlash, btnFlashEdited, btnFlashPick, btnFlash });
+            return t;
+        }
+
+        TabPage BuildSpTab()
+        {
+            var t = ToolPage("📲 SP Flash Tool");
+            t.Controls.Add(Head("SP Flash Tool"));
+            t.Controls.Add(Sub("SP Flash Tool היא תוכנה סגורה (אי אפשר לארוז אותה). התקן אותה פעם אחת לתוך התוכנה, ואז אפשר לבחור אותה כמנוע בלשוניות שאיבה/צריבה, או להשתמש בה כאן ישירות.", 34));
+            var btnInstall = new Button { Text = "התקן SP Flash Tool לתוך התוכנה...", Location = new Point(6, 86), Size = new Size(300, 34), Font = fBold };
+            btnInstall.Click += (s, e) => InstallSpIntoTool();
+            var btnDownload = new Button { Text = "הורד SP Flash Tool (אתר רשמי)", Location = new Point(6, 128), Size = new Size(300, 32) };
+            btnDownload.Click += (s, e) => { try { Process.Start(new ProcessStartInfo("https://spflashtool.com/") { UseShellExecute = true }); } catch { } };
+            btnSp = new Button { Text = "▶ צרוב אוטומטית (Download Only)", Location = new Point(6, 178), Size = new Size(300, 40), Font = fBold, BackColor = Color.FromArgb(21, 101, 192), ForeColor = Color.White, FlatStyle = FlatStyle.Flat };
+            btnSp.Click += (s, e) => RunSpAuto();
+            var btnManual = new Button { Text = "פתח ידנית (תלחץ Download בעצמך)", Location = new Point(6, 224), Size = new Size(300, 32) };
+            btnManual.Click += (s, e) => OpenInSpTool();
+            var btnGuide = new Button { Text = "מדריך צריבה + גיבוי ReadBack...", Location = new Point(6, 262), Size = new Size(300, 32) };
+            btnGuide.Click += (s, e) => ShowSpGuide();
+            t.Controls.AddRange(new Control[] { btnInstall, btnDownload, btnSp, btnManual, btnGuide });
+            return t;
+        }
+
+        TabPage BuildToolsTab()
+        {
+            var t = ToolPage("🔧 כלים");
+            t.Controls.Add(Head("כלים נוספים"));
+            t.Controls.Add(Sub("עורך HEX, יצירת scatter, תכנון super ומידע על קבצים.", 34));
+            var btnHex = new Button { Text = "עורך HEX - חיפוש והחלפה...", Location = new Point(6, 76), Size = new Size(280, 34) };
+            btnHex.Click += (s, e) => { var f = SelectedFile(); using (var h = new HexForm(f != null ? f.Path : null)) h.ShowDialog(this); };
+            var btnScatter = new Button { Text = "צור scatter לתיקיית \"ערוך\"", Location = new Point(6, 118), Size = new Size(280, 32) };
+            btnScatter.Click += (s, e) => { if (project != null) EditedScatter.Create(project, x => Log(x)); else Msg(this, "בחר פרויקט קודם."); };
+            var btnPlan2 = new Button { Text = "תכנון מפורט של super...", Location = new Point(6, 156), Size = new Size(280, 32) };
+            btnPlan2.Click += (s, e) => OpenSuperPlan(null);
+            var btnInfo = new Button { Text = "מידע על קובץ...", Location = new Point(6, 194), Size = new Size(280, 32) };
+            btnInfo.Click += (s, e) => FileInfoTool();
+            var btnHelp = new Button { Text = "מדריך מפורט (F1)", Location = new Point(6, 244), Size = new Size(280, 32) };
+            btnHelp.Click += (s, e) => { using (var h = new HelpForm()) h.ShowDialog(this); };
+            t.Controls.AddRange(new Control[] { btnHex, btnScatter, btnPlan2, btnInfo, btnHelp });
+            return t;
+        }
+
+        static object[] EngineItems()
+        {
+            return new object[]
+            {
+                "mtkclient - בטוח (ברירת מחדל)",
+                "מהיר - USB (דורש UsbDk)",
+                "מהיר - serial / COM (בלי UsbDk)",
+                "SP Flash Tool (עובד עם דרייבר ה-VCOM)"
+            };
         }
 
         NumericUpDown Num(Control parent, string label, int x, int y, int val)
@@ -233,7 +408,7 @@ namespace Ro2rwPc
             nFixed.Enabled = !max;
             int sum = (int)(nS.Value + nV.Value + nP.Value + nSE.Value + nOT.Value);
             lblTotal.Text = "סה\"כ: " + sum + "%" + (sum > 100 ? "  - יותר מ-100%!" : "");
-            lblTotal.ForeColor = sum > 100 ? Color.Firebrick : Color.Black;
+            lblTotal.ForeColor = sum > 100 ? Color.Firebrick : CardText;
         }
 
         void UpdateMagiskLabel()
@@ -241,9 +416,9 @@ namespace Ro2rwPc
             string apk = null;
             try { if (Directory.Exists(Project.ToolsDir)) apk = Directory.GetFiles(Project.ToolsDir, "*.apk").FirstOrDefault(f => Path.GetFileName(f).ToLowerInvariant().Contains("magisk")); } catch { }
             bool builtin = System.Reflection.Assembly.GetExecutingAssembly().GetManifestResourceNames().Contains("Magisk.apk");
+            if (lblMagisk == null) return;
             lblMagisk.Text = (apk != null ? "Magisk: " + Path.GetFileName(apk) + " (נבחר ידנית)" : builtin ? "Magisk: מובנה בתוכנה" : "Magisk: יורד אוטומטית מ-GitHub בפעם הראשונה") +
-                "\nהעריכה על המחשב זהה לאפליקציית Magisk. אחרי הצריבה מתקינים את האפליקציה." +
-                "\n\nה-ABI מזוהה אוטומטית מקובץ init שב-ramdisk.";
+                "\nה-ABI מזוהה אוטומטית מקובץ init שב-ramdisk.";
         }
 
         void DownloadMagiskVersion()
@@ -274,7 +449,7 @@ namespace Ro2rwPc
             }
         }
 
-        // ------------------------------------------------------------ helpers
+        // ============================================================ helpers
         void Log(string text, Color? c = null)
         {
             if (InvokeRequired) { BeginInvoke(new Action(() => Log(text, c))); return; }
@@ -318,7 +493,8 @@ namespace Ro2rwPc
         void SetBusy(bool busy)
         {
             if (InvokeRequired) { BeginInvoke(new Action(() => SetBusy(busy))); return; }
-            foreach (var b in new Control[] { btnRun, btnNewProj, btnAddFiles, btnRefresh, cmbProject, lvFiles, btnDump, btnDriver, btnWizard, btnFlash, btnSp }) b.Enabled = !busy;
+            foreach (var b in new Control[] { btnRun, btnNewProj, btnAddFiles, btnRefresh, cmbProject, lvFiles, btnDump, btnDriver, btnWizard, btnFlash, btnSp, btnDumpGo, btnFlashEdited, btnFlashPick, btnRunRo2rw, btnRunMagisk, btnRunAvb, btnRunLk, cmbEngineDump, cmbEngineFlash, cmbFileRo2rw, cmbFileMagisk, cmbFileAvb, cmbFileLk })
+                if (b != null) b.Enabled = !busy;
             if (menu != null) foreach (ToolStripMenuItem m in menu.Items) if (m.Tag as string != "always") m.Enabled = !busy;
             btnCancel.Enabled = busy;
             UseWaitCursor = busy;
@@ -329,7 +505,7 @@ namespace Ro2rwPc
             MessageBox.Show(w, text, "RO2RW PC", MessageBoxButtons.OK, icon, MessageBoxDefaultButton.Button1, MessageBoxOptions.RtlReading | MessageBoxOptions.RightAlign);
         }
 
-        // ------------------------------------------------------------ projects
+        // ============================================================ projects
         void LoadProjects(string select)
         {
             cmbProject.Items.Clear();
@@ -381,7 +557,7 @@ namespace Ro2rwPc
         void RefreshFiles()
         {
             lvFiles.Items.Clear();
-            if (project == null) return;
+            if (project == null) { PopulateFileCombos(); return; }
             files = project.Scan();
             foreach (var f in files)
             {
@@ -390,7 +566,34 @@ namespace Ro2rwPc
                 lvFiles.Items.Add(it);
                 it.Checked = f.Selected;
             }
-            if (files.Count == 0) Log("הפרויקט ריק. הוסף קבצי רום (super, boot, init_boot, vbmeta, lk...) בכפתור \"הוסף קבצים\" או בגרירה.", Color.Khaki);
+            if (files.Count == 0) Log("הפרויקט ריק. הוסף קבצי רום (super, boot, init_boot, vbmeta, lk...) בלשונית \"פרויקט וקבצים\" או בגרירה.", Color.Khaki);
+            PopulateFileCombos();
+        }
+
+        void PopulateFileCombos()
+        {
+            Fill(cmbFileRo2rw, EditAction.Ro2rw);
+            Fill(cmbFileMagisk, EditAction.Magisk);
+            Fill(cmbFileAvb, EditAction.Vbmeta);
+            Fill(cmbFileLk, EditAction.Lk);
+        }
+
+        void Fill(ComboBox cmb, EditAction action)
+        {
+            if (cmb == null) return;
+            object prev = cmb.SelectedItem;
+            cmb.Items.Clear();
+            foreach (var f in files.Where(f => f.Action == action)) cmb.Items.Add(f);
+            cmb.Items.Add("בחר קובץ מהמחשב...");
+            if (prev is ProjectFile pp && cmb.Items.OfType<ProjectFile>().Any(x => x.Path == pp.Path))
+                cmb.SelectedItem = cmb.Items.OfType<ProjectFile>().First(x => x.Path == pp.Path);
+            else if (cmb.Items.Count > 1) cmb.SelectedIndex = 0;
+            else cmb.SelectedIndex = cmb.Items.Count - 1;
+        }
+
+        string SelectedToolPath(ComboBox cmb)
+        {
+            return cmb != null && cmb.SelectedItem is ProjectFile pf ? pf.Path : null;
         }
 
         void SelectAllFiles(bool on)
@@ -435,11 +638,19 @@ namespace Ro2rwPc
             worker.Start();
         }
 
+        // ============================================================ engine selection
+        void SetEngineByIndex(int i)
+        {
+            if (i == 3) SetEngineSp();
+            else SetEngine(i == 0 ? MtkEngine.Mtkclient : MtkEngine.Fast, i == 2);
+        }
+
         void SetEngine(MtkEngine e) { SetEngine(e, false); }
 
         void SetEngine(MtkEngine e, bool serial)
         {
-            if (e == MtkEngine.Fast && !FastEngine.Available) { Msg(this, "המנוע המהיר לא מובנה בגרסה הזו. הורד את הגרסה האחרונה מדף המהדורות.", MessageBoxIcon.Warning); return; }
+            if (e == MtkEngine.Fast && !FastEngine.Available) { Msg(this, "המנוע המהיר לא מובנה בגרסה הזו. הורד את הגרסה האחרונה מדף המהדורות.", MessageBoxIcon.Warning); UpdateEngineUi(); return; }
+            FastEngine.Sp = false;
             FastEngine.Selected = e;
             FastEngine.Serial = e == MtkEngine.Fast && serial;
             if (FastEngine.Serial && string.IsNullOrEmpty(FastEngine.Com))
@@ -447,17 +658,42 @@ namespace Ro2rwPc
                 var com = Prompt("מספר COM של המכשיר (אופציונלי - השאר ריק לזיהוי אוטומטי, למשל COM40):", "מנוע serial");
                 FastEngine.Com = string.IsNullOrEmpty(com) ? null : com.Trim();
             }
-            if (miEngMtk != null) { miEngMtk.Checked = e == MtkEngine.Mtkclient; miEngFast.Checked = e == MtkEngine.Fast && !FastEngine.Serial; miEngSerial.Checked = FastEngine.Serial; }
-            if (e == MtkEngine.Mtkclient) Log("מנוע צריבה/שאיבה: mtkclient (בטוח).", Color.LightGreen);
-            else if (FastEngine.Serial) Log("מנוע צריבה/שאיבה: מהיר דרך COM/serial (בלי UsbDk). מהיר, ועובד עם דרייבר ה-VCOM. נסה קודם שאיבה (קריאה בלבד). " + (FastEngine.Com ?? "זיהוי אוטומטי"), Color.Khaki);
-            else Log("מנוע צריבה/שאיבה: מהיר דרך USB (דורש UsbDk). " + FastEngine.Warning, Color.Khaki);
+            if (e == MtkEngine.Mtkclient) Log("מנוע: mtkclient (בטוח).", Color.LightGreen);
+            else if (FastEngine.Serial) Log("מנוע: מהיר דרך COM/serial (בלי UsbDk). עובד עם דרייבר ה-VCOM. נסה קודם שאיבה (קריאה בלבד). " + (FastEngine.Com ?? "זיהוי אוטומטי"), Color.Khaki);
+            else Log("מנוע: מהיר דרך USB (דורש UsbDk). " + FastEngine.Warning, Color.Khaki);
+            UpdateEngineUi();
         }
 
-        // ------------------------------------------------------------ dump
-        static string EngineName() { return FastEngine.Selected == MtkEngine.Fast ? "מנוע מהיר" : "mtkclient"; }
+        void SetEngineSp()
+        {
+            FastEngine.Sp = true;
+            Log("מנוע: SP Flash Tool. צריבה תרוץ אוטומטית דרך SP (Download Only). שאיבה דרך ReadBack של SP (לשונית SP).", Color.Khaki);
+            UpdateEngineUi();
+        }
+
+        int EngineIndex()
+        {
+            if (FastEngine.Sp) return 3;
+            if (FastEngine.Selected == MtkEngine.Mtkclient) return 0;
+            return FastEngine.Serial ? 2 : 1;
+        }
+
+        void UpdateEngineUi()
+        {
+            engineUiUpdating = true;
+            int ix = EngineIndex();
+            if (cmbEngineDump != null) cmbEngineDump.SelectedIndex = ix;
+            if (cmbEngineFlash != null) cmbEngineFlash.SelectedIndex = ix;
+            if (miEngMtk != null) { miEngMtk.Checked = ix == 0; miEngFast.Checked = ix == 1; miEngSerial.Checked = ix == 2; miEngSp.Checked = ix == 3; }
+            engineUiUpdating = false;
+        }
+
+        // ============================================================ dump
+        static string EngineName() { return FastEngine.Sp ? "SP Flash Tool" : FastEngine.Selected == MtkEngine.Fast ? "מנוע מהיר" : "mtkclient"; }
 
         int DumpEngine(Project proj, bool skip)
         {
+            if (FastEngine.Sp) throw new InvalidOperationException("לשאיבה דרך SP Flash Tool השתמש בלשונית SP (ReadBack), או בחר מנוע mtkclient / מהיר.");
             if (FastEngine.Selected == MtkEngine.Fast)
                 return FastEngine.DumpProject(proj, skip, s => Log(s), SetStatus, () => cancel);
             return new MtkClient { Log = s => Log(s), Status = SetStatus, Cancelled = () => cancel }.DumpProject(proj, skip);
@@ -489,8 +725,14 @@ namespace Ro2rwPc
         void DumpRom()
         {
             if (project == null) { Msg(this, "צור או בחר פרויקט קודם (שם המכשיר)."); return; }
+            if (FastEngine.Sp)
+            {
+                Msg(this, "שאיבה דרך SP Flash Tool נעשית ב-ReadBack (ממשק SP). פותח את המדריך.");
+                ShowSpGuide();
+                return;
+            }
             if (!MtkClient.Bundled && !File.Exists(MtkClient.Exe)) { Msg(this, "mtkclient לא מובנה בגרסה הזו. הורד את הגרסה האחרונה מדף המהדורות.", MessageBoxIcon.Warning); return; }
-            if (!MtkClient.UsbDkInstalled)
+            if (FastEngine.Selected != MtkEngine.Fast && !MtkClient.UsbDkInstalled)
             {
                 var r = MessageBox.Show(this, "כדי ש-mtkclient יזהה את המכשיר צריך את דרייבר UsbDk, והוא לא מותקן.\n\nלהתקין עכשיו? (נדרשות הרשאות מנהל)", "RO2RW PC",
                     MessageBoxButtons.YesNoCancel, MessageBoxIcon.Question, MessageBoxDefaultButton.Button1, MessageBoxOptions.RtlReading | MessageBoxOptions.RightAlign);
@@ -528,21 +770,52 @@ namespace Ro2rwPc
             worker.Start();
         }
 
-        // ------------------------------------------------------------ run
+        // ============================================================ run edits
         void RunEdits()
         {
             if (project == null) { Msg(this, "צור או בחר פרויקט קודם."); return; }
             var sel = files.Where(f => f.Selected && f.Action != EditAction.None).ToList();
-            if (sel.Count == 0) { Msg(this, "לא סומנו קבצים לעריכה."); return; }
+            if (sel.Count == 0) { Msg(this, "לא סומנו קבצים לעריכה (בלשונית \"פרויקט וקבצים\")."); return; }
             int sum = (int)(nS.Value + nV.Value + nP.Value + nSE.Value + nOT.Value);
             if (rbMax.Checked && sum > 100 && sel.Any(f => f.Action == EditAction.Ro2rw)) { Msg(this, "סכום האחוזים ב-RO2RW גדול מ-100%.", MessageBoxIcon.Warning); return; }
+            RunEditList(project, sel);
+        }
 
+        // run one tool on the file chosen in that tool's tab (project file, or a file picked from disk)
+        void RunToolOnTab(EditAction action, ComboBox cmb, string pickTitle)
+        {
+            string path = null;
+            Project proj = project;
+            if (cmb != null && cmb.SelectedItem is ProjectFile pf) path = pf.Path;
+            else
+            {
+                using (var d = new OpenFileDialog { Title = pickTitle, Filter = "קבצי רום|*.img;*.bin;*.img.*|כל הקבצים|*.*" })
+                {
+                    if (d.ShowDialog(this) != DialogResult.OK) return;
+                    path = d.FileName;
+                }
+                var dir = Path.GetDirectoryName(path);
+                proj = new Project { Name = Path.GetFileName(dir), Root = dir };
+            }
+            if (path == null || !File.Exists(path)) { Msg(this, "לא נבחר קובץ."); return; }
+            if (action == EditAction.Ro2rw)
+            {
+                int sum = (int)(nS.Value + nV.Value + nP.Value + nSE.Value + nOT.Value);
+                if (rbMax.Checked && sum > 100) { Msg(this, "סכום האחוזים ב-RO2RW גדול מ-100%.", MessageBoxIcon.Warning); return; }
+            }
+            var pfx = new ProjectFile { Path = path, Size = new FileInfo(path).Length };
+            Project.Classify(pfx);
+            if (pfx.Action != action && !Ui.Ask(this, "הקובץ לא זוהה כמתאים לעריכה הזו (זוהה: " + (pfx.Kind.Length > 0 ? pfx.Kind : "לא ידוע") + ").\nלהמשיך בכל זאת?")) return;
+            pfx.Action = action; pfx.Selected = true;
+            RunEditList(proj, new List<ProjectFile> { pfx });
+        }
+
+        void RunEditList(Project proj, List<ProjectFile> sel)
+        {
             var st = UiSettings();
-
             cancel = false;
             SetBusy(true);
             SetProgress(0);
-            var proj = project;
             worker = new Thread(() =>
             {
                 var sw = Stopwatch.StartNew();
@@ -581,11 +854,9 @@ namespace Ro2rwPc
             return st;
         }
 
-        // ------------------------------------------------------------ menu / context menu
-        void WrapWithMenu()
+        // ============================================================ menu + context menu
+        void BuildMenu()
         {
-            var body = new Panel { Dock = DockStyle.Fill };
-            foreach (var c in Controls.Cast<Control>().ToList()) body.Controls.Add(c);
             menu = new MenuStrip { RightToLeft = RightToLeft.Yes, Font = fBase };
             var mFile = new ToolStripMenuItem("קובץ");
             mFile.DropDownItems.Add("פרויקט חדש...", null, (s, e) => NewProject());
@@ -594,61 +865,37 @@ namespace Ro2rwPc
             mFile.DropDownItems.Add("שמור יומן...", null, (s, e) => SaveLog());
             mFile.DropDownItems.Add(new ToolStripSeparator());
             mFile.DropDownItems.Add("יציאה", null, (s, e) => Close());
-            var mTools = new ToolStripMenuItem("כלים בודדים");
-            mTools.DropDownItems.Add("Root עם Magisk לקובץ boot / init_boot...", null, (s, e) => SingleTool(EditAction.Magisk, "בחר boot.img או init_boot.img"));
-            mTools.DropDownItems.Add("RO2RW לקובץ super...", null, (s, e) => SingleTool(EditAction.Ro2rw, "בחר super.img"));
-            mTools.DropDownItems.Add("ביטול AVB בקובץ vbmeta...", null, (s, e) => SingleTool(EditAction.Vbmeta, "בחר vbmeta.img"));
-            mTools.DropDownItems.Add("הסרת Orange State מקובץ lk...", null, (s, e) => SingleTool(EditAction.Lk, "בחר lk.img"));
-            mTools.DropDownItems.Add(new ToolStripSeparator());
-            mTools.DropDownItems.Add("יצירת scatter לתיקיית \"ערוך\" של הפרויקט", null, (s, e) => { if (project != null) EditedScatter.Create(project, x => Log(x)); });
-            mTools.DropDownItems.Add("מידע על קובץ...", null, (s, e) => FileInfoTool());
-            mTools.DropDownItems.Add("תכנון מפורט של super...", null, (s, e) => OpenSuperPlan(null));
-            mTools.DropDownItems.Add("עורך HEX - חיפוש והחלפה...", null, (s, e) => { var f = SelectedFile(); using (var h = new HexForm(f != null ? f.Path : null)) h.ShowDialog(this); });
             var mDev = new ToolStripMenuItem("מכשיר");
-            mDev.DropDownItems.Add("שאב רום מלא לפרויקט...", null, (s, e) => DumpRom());
-            mDev.DropDownItems.Add("צרוב חזרה את תיקיית \"ערוך\"...", null, (s, e) => FlashBack(null, true, null));
-            mDev.DropDownItems.Add("צרוב קבצים נבחרים...", null, (s, e) => FlashPickFiles());
-            mDev.DropDownItems.Add("פתח ב-SP Flash Tool (צריבה ידנית)...", null, (s, e) => OpenInSpTool());
-            mDev.DropDownItems.Add("SP Flash Tool - אוטומטי (ניסיוני)...", null, (s, e) => RunSpAuto());
-            mDev.DropDownItems.Add("מדריך SP Flash Tool (צריבה + גיבוי)...", null, (s, e) => ShowSpGuide());
-            mDev.DropDownItems.Add(new ToolStripSeparator());
             mDev.DropDownItems.Add("התקן דרייבר USB (UsbDk)", null, (s, e) => InstallDriver());
-            mDev.DropDownItems.Add("הורד SP Flash Tool (אתר רשמי)", null, (s, e) => { try { Process.Start(new ProcessStartInfo("https://spflashtool.com/") { UseShellExecute = true }); } catch { } });
             mDev.DropDownItems.Add("התקן SP Flash Tool לתוך התוכנה...", null, (s, e) => InstallSpIntoTool());
             mDev.DropDownItems.Add(new ToolStripSeparator());
             var mEng = new ToolStripMenuItem("מנוע צריבה / שאיבה");
             miEngMtk = new ToolStripMenuItem("mtkclient (בטוח, ברירת מחדל)", null, (s, e) => SetEngine(MtkEngine.Mtkclient)) { Checked = true };
             miEngFast = new ToolStripMenuItem("מנוע מהיר (USB / UsbDk)", null, (s, e) => SetEngine(MtkEngine.Fast, false));
-            miEngSerial = new ToolStripMenuItem("מנוע מהיר דרך COM (serial, בלי UsbDk) - מומלץ למכשירך", null, (s, e) => SetEngine(MtkEngine.Fast, true));
+            miEngSerial = new ToolStripMenuItem("מנוע מהיר דרך COM (serial, בלי UsbDk)", null, (s, e) => SetEngine(MtkEngine.Fast, true));
+            miEngSp = new ToolStripMenuItem("SP Flash Tool", null, (s, e) => SetEngineSp());
             mEng.DropDownItems.Add(miEngMtk);
             mEng.DropDownItems.Add(miEngFast);
             mEng.DropDownItems.Add(miEngSerial);
+            mEng.DropDownItems.Add(miEngSp);
             mDev.DropDownItems.Add(mEng);
             var mView = new ToolStripMenuItem("תצוגה") { Tag = "always" };
             mView.DropDownItems.Add("הגדל (Ctrl +)", null, (s, e) => SetZoom(zoom + 0.1f));
             mView.DropDownItems.Add("הקטן (Ctrl -)", null, (s, e) => SetZoom(zoom - 0.1f));
             mView.DropDownItems.Add("גודל רגיל (Ctrl 0)", null, (s, e) => SetZoom(1f));
             mView.DropDownItems.Add(new ToolStripSeparator());
-            mView.DropDownItems.Add("יומן בחלון נפרד (ניתן להגדלה)", null, (s, e) => OpenLogWindow());
+            mView.DropDownItems.Add("יומן בחלון נפרד (ניתן להגדיל)", null, (s, e) => OpenLogWindow());
             var mHelp = new ToolStripMenuItem("עזרה") { Tag = "always" };
             mHelp.DropDownItems.Add("מדריך מפורט (F1)", null, (s, e) => { using (var h = new HelpForm()) h.ShowDialog(this); });
-            mHelp.DropDownItems.Add("מדריך קצר", null, (s, e) => Ui.Msg(this,
-                "1. אשף: עובר על הכול שלב אחרי שלב.\n\n" +
-                "2. ידני: פרויקט ← הוספת קבצים או שאיבה ← סימון ← \"בצע עריכה\" ← \"צרוב חזרה\".\n\n" +
-                "3. כלים בודדים: עריכת קובץ אחד בלי פרויקט. הפלט נשמר בתיקייה \"ערוך\" ליד הקובץ.\n\n" +
-                "4. קליק ימני על קובץ ברשימה: עריכה של הקובץ הזה בלבד, שינוי סוג העריכה, פתיחת המיקום ועוד.\n\n" +
-                "הקבצים המקוריים אף פעם לא משתנים."));
             mHelp.DropDownItems.Add("אודות", null, (s, e) => Ui.Msg(this,
                 "RO2RW PC " + Program.Version + "\n\n" +
                 "רכיבים: RO2RW (LeeGarChat - רעיון), Magisk (topjohnwu, GPLv3), mtkclient (bkerler, GPLv3), AVB-Disabler, hex-replacer, hovatek.\n\n" +
                 "https://github.com/shmuel-sinay/ro2rw"));
-            menu.Items.AddRange(new ToolStripItem[] { mFile, mTools, mDev, mView, mHelp });
-            MainMenuStrip = menu;
-            Controls.Add(body);
-            Controls.Add(menu);
-            ClientSize = new Size(ClientSize.Width, ClientSize.Height + menu.PreferredSize.Height);
+            menu.Items.AddRange(new ToolStripItem[] { mFile, mDev, mView, mHelp });
+        }
 
-            // context menu on files
+        void BuildFileContextMenu()
+        {
             var cm = new ContextMenuStrip { RightToLeft = RightToLeft.Yes, Font = fBase };
             var miOnly = new ToolStripMenuItem("ערוך רק את הקובץ הזה", null, (s, e) => EditOnlySelected());
             var miAct = new ToolStripMenuItem("סוג עריכה");
@@ -669,7 +916,7 @@ namespace Ro2rwPc
                 var f = SelectedFile();
                 if (f == null) { e.Cancel = true; return; }
                 miOnly.Enabled = f.Action != EditAction.None;
-                miFlash.Enabled = File.Exists(Path.Combine(project.Edited, f.Name));
+                miFlash.Enabled = project != null && File.Exists(Path.Combine(project.Edited, f.Name));
                 miPlan.Visible = f.Action == EditAction.Ro2rw;
             };
             lvFiles.ContextMenuStrip = cm;
@@ -687,16 +934,15 @@ namespace Ro2rwPc
             f.Action = a; f.Selected = a != EditAction.None;
             var it = lvFiles.SelectedItems[0];
             it.SubItems[3].Text = Project.ActionName(a);
-            it.ForeColor = a == EditAction.None ? Color.Gray : Color.Black;
+            it.ForeColor = a == EditAction.None ? Color.Gray : CardText;
             it.Checked = f.Selected;
+            PopulateFileCombos();
         }
 
         void EditOnlySelected()
         {
             var f = SelectedFile(); if (f == null) return;
-            foreach (var x in files) x.Selected = x == f;
-            foreach (ListViewItem it in lvFiles.Items) it.Checked = it.Tag == f;
-            RunEdits();
+            RunEditList(project, new List<ProjectFile> { f });
         }
 
         void DeleteSelected()
@@ -756,46 +1002,14 @@ namespace Ro2rwPc
             Ui.Msg(this, string.Join("\n", l));
         }
 
-        // ------------------------------------------------------------ single tools (no project)
-        void SingleTool(EditAction action, string title)
-        {
-            string path;
-            using (var d = new OpenFileDialog { Title = title, Filter = "קבצי רום|*.img;*.bin;*.img.*|כל הקבצים|*.*" })
-            {
-                if (d.ShowDialog(this) != DialogResult.OK) return;
-                path = d.FileName;
-            }
-            var dir = Path.GetDirectoryName(path);
-            var adhoc = new Project { Name = Path.GetFileName(dir), Root = dir };
-            var pf = new ProjectFile { Path = path, Size = new FileInfo(path).Length };
-            Project.Classify(pf);
-            if (pf.Action != action && !Ui.Ask(this, "הקובץ לא זוהה כמתאים לעריכה הזו (זוהה: " + (pf.Kind.Length > 0 ? pf.Kind : "לא ידוע") + ").\nלהמשיך בכל זאת?")) return;
-            pf.Action = action; pf.Selected = true;
-            var st = UiSettings();
-            cancel = false; SetBusy(true); SetProgress(0);
-            worker = new Thread(() =>
-            {
-                try
-                {
-                    var ed = new Editor { Log = s => Log(s), Progress = SetProgress, Cancelled = () => cancel };
-                    int ok = ed.Run(adhoc, new List<ProjectFile> { pf }, st);
-                    if (ok == 1) Log("✔ הקובץ הערוך נמצא ב: " + Path.Combine(adhoc.Edited, pf.Name));
-                }
-                catch (OperationCanceledException) { Log("בוטל.", Color.Khaki); }
-                catch (Exception ex) { Log("✖ " + ex.Message); }
-                finally { SetBusy(false); }
-            }) { IsBackground = true };
-            worker.Start();
-        }
-
-        // ------------------------------------------------------------ flash back
+        // ============================================================ flash back
         bool AskBrom(string what)
         {
             bool ok = false;
             Invoke(new Action(() =>
             {
                 if (!MtkClient.Bundled && !File.Exists(MtkClient.Exe)) { Ui.Msg(this, "mtkclient לא מובנה בגרסה הזו.", MessageBoxIcon.Warning); return; }
-                if (!MtkClient.UsbDkInstalled && !Ui.Ask(this, "דרייבר UsbDk לא מותקן, ובלעדיו mtkclient לא יזהה את המכשיר.\nלהמשיך בכל זאת? (אפשר להתקין מתפריט \"מכשיר\")")) return;
+                if (FastEngine.Selected != MtkEngine.Fast && !MtkClient.UsbDkInstalled && !Ui.Ask(this, "דרייבר UsbDk לא מותקן, ובלעדיו mtkclient לא יזהה את המכשיר.\nלהמשיך בכל זאת? (אפשר להתקין מתפריט \"מכשיר\")")) return;
                 ok = MessageBox.Show(this, what + "\n\n" + Ui.BromHelp, "RO2RW PC", MessageBoxButtons.OKCancel, MessageBoxIcon.Information,
                     MessageBoxDefaultButton.Button1, MessageBoxOptions.RtlReading | MessageBoxOptions.RightAlign) == DialogResult.OK;
             }));
@@ -811,6 +1025,11 @@ namespace Ro2rwPc
         /// <summary>files == null → whole "ערוך" folder of the project.</summary>
         void FlashBack(string[] fileList, bool wholeEdited, Action after)
         {
+            if (FastEngine.Sp)
+            {
+                RunSpAuto();
+                return;
+            }
             List<FlashItem> items;
             string workDir;
             string gpt = project != null ? Path.Combine(project.Root, "gpt.bin") : null;
@@ -842,7 +1061,7 @@ namespace Ro2rwPc
                 {
                     if (!AskBrom("צריבה חזרה למכשיר:")) { Log("הצריבה בוטלה."); return; }
                     Log("");
-                    Log("▶ צריבה חזרה למכשיר - ממתין למכשיר במצב BROM...");
+                    Log("▶ צריבה חזרה למכשיר (" + EngineName() + ") - ממתין למכשיר במצב BROM...");
                     if (FastEngine.Selected == MtkEngine.Fast) Log("  " + FastEngine.Warning, Color.Khaki);
                     var fl = new Flasher { Log = s => Log(s), Status = SetStatus, Cancelled = () => cancel, GptPath = gptForFlash };
                     fl.Flash(items, workDir, reboot);
@@ -855,7 +1074,7 @@ namespace Ro2rwPc
             worker.Start();
         }
 
-        // ------------------------------------------------------------ wizard
+        // ============================================================ wizard
         public void OpenWizard() { RunWizard(); }
 
         void RunWizard()
@@ -881,10 +1100,14 @@ namespace Ro2rwPc
                     // 1. source
                     if (w.Source == 0)
                     {
-                        if (!AskBrom("שאיבת רום מלא לפרויקט \"" + proj.Name + "\":")) { Log("בוטל."); return; }
-                        Log("▶ שלב 1: שאיבה מהמכשיר (" + EngineName() + ")...");
-                        int n = DumpEngine(proj, w.SkipUserdata);
-                        Log("✔ נשאבו " + n + " מחיצות");
+                        if (FastEngine.Sp) { Log("! לשאיבה דרך SP השתמש בלשונית SP. מדלג על שלב השאיבה.", Color.Khaki); }
+                        else
+                        {
+                            if (!AskBrom("שאיבת רום מלא לפרויקט \"" + proj.Name + "\":")) { Log("בוטל."); return; }
+                            Log("▶ שלב 1: שאיבה מהמכשיר (" + EngineName() + ")...");
+                            int n = DumpEngine(proj, w.SkipUserdata);
+                            Log("✔ נשאבו " + n + " מחיצות");
+                        }
                     }
                     else if (w.Source == 1)
                     {
@@ -931,7 +1154,7 @@ namespace Ro2rwPc
             worker.Start();
         }
 
-        // ------------------------------------------------------------ super plan / projects dir / zoom / shortcuts / tooltips
+        // ============================================================ super plan / projects dir / zoom / shortcuts / tooltips
         void OpenSuperPlan(string path)
         {
             if (path == null)
@@ -991,7 +1214,7 @@ namespace Ro2rwPc
                 case Keys.Control | Keys.N: if (btnNewProj.Enabled) NewProject(); return true;
                 case Keys.Control | Keys.O: if (btnAddFiles.Enabled) PickFiles(); return true;
                 case Keys.Control | Keys.E: if (btnRun.Enabled) RunEdits(); return true;
-                case Keys.Control | Keys.F: if (btnFlash.Enabled) FlashBack(null, true, null); return true;
+                case Keys.Control | Keys.F: if (btnFlashEdited != null && btnFlashEdited.Enabled) FlashBack(null, true, null); return true;
                 case Keys.Control | Keys.Oemplus: case Keys.Control | Keys.Add: SetZoom(zoom + 0.1f); return true;
                 case Keys.Control | Keys.OemMinus: case Keys.Control | Keys.Subtract: SetZoom(zoom - 0.1f); return true;
                 case Keys.Control | Keys.D0: case Keys.Control | Keys.NumPad0: SetZoom(1f); return true;
@@ -1001,19 +1224,26 @@ namespace Ro2rwPc
 
         void SetupTooltips()
         {
-            Action<Control, string> t = (c, text) => { tips.SetToolTip(c, text); c.AccessibleDescription = text; };
+            Action<Control, string> t = (c, text) => { if (c == null) return; tips.SetToolTip(c, text); c.AccessibleDescription = text; };
             t(btnWizard, "אשף שלב אחרי שלב: פרויקט, מקור, עריכות, גדלים וצריבה (Ctrl+W)");
-            t(btnRun, "מבצע את העריכות המסומנות. הפלט נשמר בתיקייה \"ערוך\" (Ctrl+E)");
-            t(btnSp, "הדרך המומלצת: מכין את התיקייה \"ערוך\" + scatter ופותח את SP Flash Tool לצריבה ידנית. עובד גם כשדרייבר UsbDk לא נתמך במכשיר");
-            t(btnFlash, "צריבה ישירה דרך USB (mtkclient/מנוע מהיר) - דורש דרייבר UsbDk. אם המכשיר לא מזוהה, השתמש ב-SP Flash Tool");
+            t(btnRun, "מבצע את כל הקבצים המסומנים ברשימה. הפלט נשמר בתיקייה \"ערוך\" (Ctrl+E)");
+            t(btnRunRo2rw, "ממיר את קובץ ה-super הנבחר ל-ext4 לקריאה-וכתיבה");
+            t(btnRunMagisk, "עורך את קובץ ה-boot/init_boot הנבחר עם Magisk");
+            t(btnRunAvb, "מכבה את האימות ב-vbmeta הנבחר");
+            t(btnRunLk, "מסיר Orange State ותיקוני bootloader מקובץ ה-lk הנבחר");
+            t(btnDumpGo, "שואב את כל המחיצות מהמכשיר לתוך הפרויקט (MediaTek, מצב BROM)");
+            t(btnFlashEdited, "צורב את תיקיית \"ערוך\" חזרה למכשיר לפי המנוע הנבחר (Ctrl+F)");
+            t(btnFlashPick, "צורב קבצים ספציפיים שתבחר");
+            t(btnSp, "מריץ את SP Flash Tool אוטומטית (Download Only). עובד עם דרייבר ה-VCOM, גם בלי UsbDk");
             t(btnCancel, "עוצר מיד את הפעולה הנוכחית. קבצים חלקיים נמחקים (Esc)");
-            t(btnDump, "שואב את כל המחיצות מהמכשיר לתוך הפרויקט (MediaTek, מצב BROM)");
             t(btnDriver, "מתקין את דרייבר UsbDk ש-mtkclient צריך (פעם אחת, הרשאות מנהל)");
             t(cbSkipUserdata, "לא לשאוב את userdata: מחיצה ענקית עם המידע האישי");
             t(btnNewProj, "פרויקט חדש = תיקייה חדשה בשם המכשיר (Ctrl+N)");
             t(btnAddFiles, "מעתיק קבצי רום לפרויקט. המקור לא משתנה (Ctrl+O)");
             t(btnRefresh, "סורק מחדש את קבצי הפרויקט (F5)");
             t(lvFiles, "סמן קבצים לעריכה. קליק ימני: עריכה של קובץ אחד, שינוי סוג העריכה, צריבה, מידע");
+            t(cmbEngineDump, "המנוע לשאיבה: mtkclient (בטוח), מהיר (USB/serial), או SP Flash Tool (VCOM)");
+            t(cmbEngineFlash, "המנוע לצריבה: mtkclient (בטוח), מהיר (USB/serial), או SP Flash Tool (VCOM)");
             t(rbMax, "כל המקום הפנוי ב-super יחולק לפי האחוזים");
             t(rbFixed, "אותו מספר MB לכל מחיצה מומרת. לגדלים שונים לכל מחיצה: תכנון מפורט");
             t(nFixed, "כמה MB פנויים להוסיף לכל מחיצה");
@@ -1030,8 +1260,6 @@ namespace Ro2rwPc
             t(cbLkText, "מוחק את הודעות Orange State מהמסך");
             t(cmbLkAndroid, "בדרך כלל אוטומטי. אם לא נמצא קוד, נסה לבחור ידנית");
             t(cmbVbMode, "\"הכול\" מומלץ. האפשרויות האחרות מכבות רק חלק מהאימות");
-            foreach (var pair in new[] { new { c = (Control)btnWizard, n = "אשף" }, new { c = (Control)btnFlash, n = "צרוב חזרה" }, new { c = (Control)btnDump, n = "שאב רום מהמכשיר" } })
-                pair.c.AccessibleName = pair.n;
         }
 
         void FitToScreen()
@@ -1039,19 +1267,16 @@ namespace Ro2rwPc
             try
             {
                 var wa = Screen.FromControl(this).WorkingArea;
-                MinimumSize = new Size(Math.Min(MinimumSize.Width, wa.Width), Math.Min(760, wa.Height));
+                MinimumSize = new Size(Math.Min(MinimumSize.Width, wa.Width), Math.Min(680, wa.Height));
                 if (Height > wa.Height - 8 || Width > wa.Width - 8)
-                {
-                    // small screen (e.g. 14\" with scaling): use all available space so the log is readable
                     WindowState = FormWindowState.Maximized;
-                }
             }
             catch { }
         }
 
-        // ------------------------------------------------------------ theme (light & clean)
-        static readonly Color Accent = Color.FromArgb(21, 101, 192);      // blue
-        static readonly Color Bg = Color.FromArgb(238, 241, 245);         // light gray-blue
+        // ============================================================ theme (light & clean)
+        static readonly Color Accent = Color.FromArgb(21, 101, 192);
+        static readonly Color Bg = Color.FromArgb(238, 241, 245);
         static readonly Color CardText = Color.FromArgb(31, 41, 51);
         static readonly Color[] PrimaryBg =
         {
@@ -1075,10 +1300,11 @@ namespace Ro2rwPc
         {
             foreach (Control c in root.Controls)
             {
-                if (c is Panel) { c.BackColor = Bg; SetDoubleBuffered(c); }
+                if (c is Panel || c is TableLayoutPanel || c is FlowLayoutPanel) { if (!(c.BackColor.R < 40)) c.BackColor = Bg; SetDoubleBuffered(c); }
                 else if (c is GroupBox) { c.ForeColor = Accent; c.BackColor = Bg; }
                 else if (c is Button) StyleButton((Button)c);
                 else if (c is TabControl) c.BackColor = Bg;
+                else if (c is TabPage) c.BackColor = Bg;
                 else if (c is Label && c.ForeColor == SystemColors.ControlText) c.ForeColor = CardText;
                 else if (c is ListView) { c.BackColor = Color.White; ((ListView)c).BorderStyle = BorderStyle.FixedSingle; }
                 else if (c is TextBox || c is ComboBox || c is NumericUpDown) c.BackColor = Color.White;
@@ -1107,7 +1333,7 @@ namespace Ro2rwPc
             b.Cursor = Cursors.Hand;
         }
 
-                // ------------------------------------------------------------ SP Flash Tool
+        // ============================================================ SP Flash Tool
         string SpToolDir { get { return Path.Combine(Project.ToolsDir, "SPFlashTool"); } }
 
         string ResolveSpTool()
@@ -1159,37 +1385,20 @@ namespace Ro2rwPc
             }
         }
 
-        void SpFlashMenu()
-        {
-            var r = MessageBox.Show(this,
-                "איך לצרוב עם SP Flash Tool?\n\n" +
-                "כן = אוטומטי: RO2RW יפעיל את SP Flash Tool וירכיב את ההורדה לבד (ניסיוני).\n" +
-                "לא = ידני: נפתח את SP Flash Tool ותלחץ Download בעצמך.\n" +
-                "ביטול = חזרה.",
-                "SP Flash Tool", MessageBoxButtons.YesNoCancel, MessageBoxIcon.Question,
-                MessageBoxDefaultButton.Button1, MessageBoxOptions.RtlReading | MessageBoxOptions.RightAlign);
-            if (r == DialogResult.Yes) RunSpAuto();
-            else if (r == DialogResult.No) OpenInSpTool();
-        }
-
         void RunSpAuto()
         {
             if (project == null) { Msg(this, "צור או בחר פרויקט קודם."); return; }
-            // 1. scatter
             string scatter = Directory.Exists(project.Edited) ? Directory.GetFiles(project.Edited, "*scatter*.txt").OrderBy(x => x).FirstOrDefault() : null;
             if (scatter == null) { try { EditedScatter.Create(project, x => Log(x)); } catch { } scatter = Directory.Exists(project.Edited) ? Directory.GetFiles(project.Edited, "*scatter*.txt").OrderBy(x => x).FirstOrDefault() : null; }
             if (scatter == null) { Msg(this, "לא נמצא scatter בתיקייה \"ערוך\". בצע עריכה, או הוסף את ה-scatter של הקושחה לפרויקט.", MessageBoxIcon.Warning); return; }
-            // 2. flash_tool.exe (from tools/SPFlashTool, remembered path, or pick)
             if (ResolveSpTool() == null)
             {
-                using (var d = new OpenFileDialog { Title = "בחר את flash_tool.exe (או: מכשיר ← התקן SP לתוך התוכנה)", Filter = "SP Flash Tool|flash_tool*.exe;FlashTool*.exe|כל הקבצים|*.exe" })
+                using (var d = new OpenFileDialog { Title = "בחר את flash_tool.exe (או: לשונית SP ← התקן SP לתוך התוכנה)", Filter = "SP Flash Tool|flash_tool*.exe;FlashTool*.exe|כל הקבצים|*.exe" })
                 { if (d.ShowDialog(this) != DialogResult.OK) return; sptoolPath = d.FileName; }
             }
-            // 3. roms
             List<SpFlashTool.Rom> roms;
             try { roms = SpFlashTool.EnabledRoms(scatter, project.Edited); } catch (Exception ex) { Msg(this, ex.Message, MessageBoxIcon.Error); return; }
             if (roms.Count == 0) { Msg(this, "אין מחיצות מסומנות לצריבה ב-scatter.", MessageBoxIcon.Warning); return; }
-            // 4. DA
             string da = SpFlashTool.FindDa(sptoolPath);
             if (da == null)
             {
@@ -1197,16 +1406,13 @@ namespace Ro2rwPc
                 using (var d = new OpenFileDialog { Title = "בחר MTK_AllInOne_DA.bin", Filter = "DA|*.bin|כל הקבצים|*.*" })
                 { if (d.ShowDialog(this) != DialogResult.OK) return; da = d.FileName; }
             }
-            // 5. platform/storage from scatter
             string stext = File.ReadAllText(scatter);
             var pm = System.Text.RegularExpressions.Regex.Match(stext, @"platform:\s*(\S+)");
             string platform = pm.Success ? pm.Groups[1].Value : null;
             bool ufs = System.Text.RegularExpressions.Regex.IsMatch(stext, @"storage:\s*UFS", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-            // 6. build config
             string cfg;
             try { cfg = SpFlashTool.BuildConfig(project.Edited, scatter, da, platform, ufs, roms, null); }
             catch (Exception ex) { Msg(this, ex.Message, MessageBoxIcon.Error); return; }
-            // 7. confirm
             if (!Ui.Ask(this,
                 "SP Flash Tool תופעל אוטומטית ותצרוב (Download Only, בלי format):\n" +
                 string.Join("\n", roms.Select(x => "   • " + x.Name)) + "\n\n" +
@@ -1227,7 +1433,7 @@ namespace Ro2rwPc
                     Log("✔ SP Flash Tool סיימה. בדוק שהמכשיר עלה.", Color.LightGreen);
                 }
                 catch (OperationCanceledException) { Log("בוטל.", Color.Khaki); }
-                catch (Exception ex) { Log("✖ " + ex.Message); Log("  אפשר תמיד לצרוב ידנית: כפתור SP Flash Tool ← ידני.", Color.Khaki); }
+                catch (Exception ex) { Log("✖ " + ex.Message); Log("  אפשר תמיד לצרוב ידנית: לשונית SP ← פתח ידנית.", Color.Khaki); }
                 finally { SetStatus(""); SetBusy(false); }
             }) { IsBackground = true };
             worker.Start();
@@ -1235,7 +1441,6 @@ namespace Ro2rwPc
 
         void OpenInSpTool()
         {
-            // 1. decide which folder holds the scatter + images
             string folder = null;
             if (project != null && Directory.Exists(project.Edited) && Directory.GetFiles(project.Edited).Length > 0)
                 folder = project.Edited;
@@ -1247,7 +1452,6 @@ namespace Ro2rwPc
                     folder = d.SelectedPath;
                 }
             }
-            // 2. make sure a scatter exists (generate from the project if needed)
             string scatter = Directory.GetFiles(folder, "*scatter*.txt").OrderBy(x => x).FirstOrDefault();
             if (scatter == null && project != null)
             {
@@ -1259,17 +1463,15 @@ namespace Ro2rwPc
                 Msg(this, "לא נמצא קובץ scatter.\n\nאפשרויות:\n1. העתק לפרויקט את קובץ ה-scatter של הקושחה (‏*_scatter.txt) ולחץ שוב.\n2. או בצע עריכה (RO2RW) - אם יש בפרויקט scatter מקורי, ייווצר scatter לתיקייה \"ערוך\".\n\n(ל-SP Flash Tool אפשר גם לטעון ישירות את ה-scatter של הקושחה ולהחליף ידנית את נתיבי הקבצים לקבצים שבתיקייה \"ערוך\".)", MessageBoxIcon.Warning);
                 return;
             }
-            // 3. locate flash_tool.exe (ask once, remember)
             if (ResolveSpTool() == null)
             {
-                if (!Ui.Ask(this, "SP Flash Tool אינה מובנית (היא תוכנה סגורה, אי אפשר לארוז אותה). יש להתקין אותה בעצמך (תפריט מכשיר ← הורד SP Flash Tool), או להעתיק אותה לתוך התוכנה (מכשיר ← התקן SP Flash Tool לתוך התוכנה).\n\nלבחור עכשיו את הקובץ flash_tool.exe?")) return;
+                if (!Ui.Ask(this, "SP Flash Tool אינה מובנית (היא תוכנה סגורה, אי אפשר לארוז אותה). יש להתקין אותה בעצמך (לשונית SP ← הורד SP Flash Tool), או להעתיק אותה לתוך התוכנה (לשונית SP ← התקן SP Flash Tool לתוך התוכנה).\n\nלבחור עכשיו את הקובץ flash_tool.exe?")) return;
                 using (var d = new OpenFileDialog { Title = "בחר את flash_tool.exe", Filter = "SP Flash Tool|flash_tool*.exe;FlashTool*.exe|כל הקבצים|*.exe" })
                 {
                     if (d.ShowDialog(this) != DialogResult.OK) return;
                     sptoolPath = d.FileName;
                 }
             }
-            // 4. hand everything over
             try { Clipboard.SetText(scatter); } catch { }
             try { Process.Start("explorer.exe", "/select,\"" + scatter + "\""); } catch { }
             try { Process.Start(new ProcessStartInfo(sptoolPath) { UseShellExecute = true, WorkingDirectory = Path.GetDirectoryName(sptoolPath) }); }
@@ -1281,12 +1483,12 @@ namespace Ro2rwPc
         void ShowSpGuide()
         {
             string folder = project != null && Directory.Exists(project.Edited) ? project.Edited : null;
-            var files = folder != null ? Directory.GetFiles(folder).Where(f => { var e = Path.GetExtension(f).ToLowerInvariant(); return e == ".img" || e == ".bin"; }) : Enumerable.Empty<string>();
+            var fs = folder != null ? Directory.GetFiles(folder).Where(f => { var e = Path.GetExtension(f).ToLowerInvariant(); return e == ".img" || e == ".bin"; }) : Enumerable.Empty<string>();
             string scatter = folder != null ? Directory.GetFiles(folder, "*scatter*.txt").OrderBy(x => x).FirstOrDefault() : null;
-            using (var g = new SpGuideForm(folder, files, scatter)) g.ShowDialog(this);
+            using (var g = new SpGuideForm(folder, fs, scatter)) g.ShowDialog(this);
         }
 
-        // ------------------------------------------------------------ settings persistence
+        // ============================================================ settings persistence
         string SettingsPath { get { return Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "RO2RW-PC.ini"); } }
 
         void SaveUiSettings()
@@ -1299,7 +1501,7 @@ namespace Ro2rwPc
                     "sparse=" + cbSparse.Checked, "fstab=" + cbFstab.Checked, "nowifi=" + cbNoWifi.Checked, "abi=" + cmbAbi.SelectedItem, "keepv=" + cbKeepVerity.Checked, "keepe=" + cbKeepEnc.Checked,
                     "lkdelay=" + cbLkDelay.Checked, "lktext=" + cbLkText.Checked, "skipud=" + cbSkipUserdata.Checked, "project=" + (project != null ? project.Name : ""),
                     "recovery=" + cbRecovery.Checked, "vbflag=" + cbPatchVbFlag.Checked, "lkandroid=" + cmbLkAndroid.SelectedIndex, "vbmode=" + cmbVbMode.SelectedIndex,
-                    "projdir=" + (Project.BaseDirOverride ?? ""), "zoom=" + zoom.ToString(System.Globalization.CultureInfo.InvariantCulture), "engine=" + (FastEngine.Selected == MtkEngine.Fast ? (FastEngine.Serial ? "serial" : "fast") : "mtkclient"), "engcom=" + (FastEngine.Com ?? ""), "sptool=" + (sptoolPath ?? "")
+                    "projdir=" + (Project.BaseDirOverride ?? ""), "zoom=" + zoom.ToString(System.Globalization.CultureInfo.InvariantCulture), "engine=" + (FastEngine.Sp ? "sp" : FastEngine.Selected == MtkEngine.Fast ? (FastEngine.Serial ? "serial" : "fast") : "mtkclient"), "engcom=" + (FastEngine.Com ?? ""), "sptool=" + (sptoolPath ?? "")
                 };
                 File.WriteAllLines(SettingsPath, kv);
             }
@@ -1333,11 +1535,13 @@ namespace Ro2rwPc
                 if (d.ContainsKey("vbmode") && int.TryParse(d["vbmode"], out ix) && ix >= 0 && ix < 3) cmbVbMode.SelectedIndex = ix;
                 if (d.ContainsKey("projdir") && d["projdir"].Length > 0 && Directory.Exists(d["projdir"])) Project.BaseDirOverride = d["projdir"];
                 if (d.ContainsKey("engcom") && d["engcom"].Length > 0) FastEngine.Com = d["engcom"];
-                if (d.ContainsKey("engine") && FastEngine.Available)
+                if (d.ContainsKey("engine"))
                 {
-                    if (d["engine"] == "serial") SetEngine(MtkEngine.Fast, true);
-                    else if (d["engine"] == "fast") SetEngine(MtkEngine.Fast, false);
+                    if (d["engine"] == "sp") SetEngineSp();
+                    else if (FastEngine.Available && d["engine"] == "serial") SetEngine(MtkEngine.Fast, true);
+                    else if (FastEngine.Available && d["engine"] == "fast") SetEngine(MtkEngine.Fast, false);
                 }
+                UpdateEngineUi();
                 if (d.ContainsKey("sptool") && d["sptool"].Length > 0) sptoolPath = d["sptool"];
                 float zz;
                 if (d.ContainsKey("zoom") && float.TryParse(d["zoom"], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out zz) && Math.Abs(zz - 1f) > 0.01f) Shown += (s2, e2) => SetZoom(zz);

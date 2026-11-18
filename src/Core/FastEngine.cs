@@ -19,6 +19,8 @@ namespace Ro2rwPc
         /// <summary>Fast engine over the MTK VCOM serial COM port (no UsbDk). Works where only SP's driver binds.</summary>
         public static bool Serial = false;
         public static string Com = null;   // optional forced COM port, e.g. "COM40"
+        /// <summary>SP Flash Tool is the active engine: flash + dump are routed through the user's SP Flash Tool.</summary>
+        public static bool Sp = false;
 
         static string SerialArgs { get { return Serial ? " --serial" + (string.IsNullOrEmpty(Com) ? "" : " --com " + Com) : ""; } }
 

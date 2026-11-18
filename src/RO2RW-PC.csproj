@@ -9,7 +9,7 @@
     <PlatformTarget>AnyCPU</PlatformTarget>
     <Prefer32Bit>false</Prefer32Bit>
     <ApplicationManifest>App\app.manifest</ApplicationManifest>
-    <Version>2.9.0</Version>
+    <Version>2.10.0</Version>
     <Product>RO2RW PC</Product>
     <Description>Converts Android super.img partitions to read-write ext4</Description>
     <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
