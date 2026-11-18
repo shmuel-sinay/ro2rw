@@ -9,6 +9,13 @@
 # dumpall connects once, reads the GPT, then reads every partition in a single
 # DA session (the bundled CLI re-handshakes per partition, which is far slower).
 import argparse, os, struct, sys
+# Force UTF-8 output so prints with non-ASCII chars (e.g. the -> arrow in the
+# bundled tool's logs) never crash on a non-UTF-8 Windows console (cp1255 etc.).
+for _s in (sys.stdout, sys.stderr):
+    try:
+        _s.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 # Windows: make pyusb locate a libusb-1.0 backend (shipped by libusb-package).
 try:
