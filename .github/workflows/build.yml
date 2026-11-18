@@ -81,6 +81,16 @@ jobs:
           $size = (Get-Item out/RO2RW-PC.exe).Length
           "RO2RW-PC.exe: $size bytes"
           if ($size -lt 40MB) { throw "bundled tools were not embedded" }
+      - name: Build installer (Inno Setup)
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          choco install innosetup -y --no-progress
+          $v = ([xml](Get-Content src/RO2RW-PC.csproj)).Project.PropertyGroup.Version | Select-Object -First 1
+          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          & $iscc "/DAppVer=$v" "/DSrcExe=$(Resolve-Path out/RO2RW-PC.exe)" installer/RO2RW-PC.iss
+          if ($LASTEXITCODE -ne 0) { throw "installer build failed" }
+          Get-Item installer/RO2RW-PC-Setup.exe | ForEach-Object { "installer: $($_.Length) bytes" }
       - name: Upload EXE
         uses: actions/upload-artifact@v4
         with:
@@ -94,7 +104,10 @@ jobs:
           name: RO2RW PC (גרסת פיתוח)
           prerelease: true
           make_latest: false
-          files: out/RO2RW-PC.exe
+          fail_on_unmatched_files: false
+          files: |
+            out/RO2RW-PC.exe
+            installer/RO2RW-PC-Setup.exe
           body: |
             גרסת פיתוח שנבנתה אוטומטית מהקומיט ${{ github.sha }}.
             לגרסה היציבה ראו את המהדורה האחרונה.
@@ -113,15 +126,19 @@ jobs:
           name: RO2RW PC ${{ steps.ver.outputs.tag }}
           prerelease: false
           make_latest: true
-          files: out/RO2RW-PC.exe
+          fail_on_unmatched_files: false
+          files: |
+            out/RO2RW-PC.exe
+            installer/RO2RW-PC-Setup.exe
           body: |
             ## RO2RW PC ${{ steps.ver.outputs.tag }}
 
             ערכת כלים לווינדוס לעריכת רום של אנדרואיד, על המחשב בלבד.
 
             ### הורדה והפעלה
-            1. הורידו את **RO2RW-PC.exe** מהקבצים למטה ושימו אותו בתיקייה משלו.
-            2. הפעילו בלחיצה כפולה (Windows 10/11, בלי התקנה). אם מופיעה אזהרת SmartScreen: "מידע נוסף" ואז "הפעל בכל זאת".
+            1. **מומלץ: RO2RW-PC-Setup.exe** - מתקין ל-C:\RO2RW עם קיצורי דרך, והפרויקטים נשמרים בתוך תיקיית התוכנה. עדכון עתידי מתקין על הקיים בלי לאבד פרויקטים.
+            או **RO2RW-PC.exe** - גרסה ניידת בלי התקנה (שימו בתיקייה משלה).
+            2. הפעילו (Windows 10/11). אם מופיעה אזהרת SmartScreen: "מידע נוסף" ואז "הפעל בכל זאת".
             3. "פרויקט חדש": נותנים שם, בדרך כלל שם המכשיר.
             4. "הוסף קבצים" (או גרירה): super, boot / init_boot, vbmeta, lk.
             5. "בצע עריכה": הקבצים הערוכים נשמרים בתיקייה **ערוך** בתוך הפרויקט, עם אותם שמות, יחד עם scatter ל-SP Flash Tool שבו מסומנות רק המחיצות שנערכו.
