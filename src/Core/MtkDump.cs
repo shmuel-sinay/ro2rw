@@ -184,7 +184,12 @@ namespace Ro2rwPc
         }
 
         /// <summary>Runs mtk.exe with arguments, streaming output. Returns exit code and the full log text.</summary>
-        public int Run(string args, string workDir, StringBuilder captured) { return RunExe(EnsureExe(), args, workDir, captured, "mtk"); }
+        /// <summary>mtkclient over the MTK VCOM serial COM port (--serialport): same driver SP Flash Tool uses, no UsbDk.</summary>
+        public static bool Serial = false;
+        public static string Com = null;   // null/empty = auto-detect (DETECT)
+        static string SerialArg { get { return Serial ? " --serialport" + (string.IsNullOrEmpty(Com) ? "" : " " + Com) : ""; } }
+
+        public int Run(string args, string workDir, StringBuilder captured) { return RunExe(EnsureExe(), args + SerialArg, workDir, captured, "mtk"); }
 
         /// <summary>Runs any bundled exe with streamed output, cancellable. Shared by mtkclient and the fast engine.</summary>
         public int RunExe(string exe, string args, string workDir, StringBuilder captured, string label)

@@ -18,7 +18,7 @@ namespace Ro2rwPc
 
         ComboBox cmbProject;
         Button btnWizard, btnFlash, btnPlan, btnSp;
-        ToolStripMenuItem miEngMtk, miEngFast, miEngSerial, miEngSp;
+        ToolStripMenuItem miEngMtk, miEngFast, miEngSerial, miEngSp, miEngMtkSerial;
         Form logWin; RichTextBox logWinBox;
         CheckBox cbRecovery, cbPatchVbFlag;
         ComboBox cmbLkAndroid, cmbVbMode;
@@ -73,7 +73,10 @@ namespace Ro2rwPc
             SetupTooltips();
             ApplyTheme();
             Load += (s, e) => FitToScreen();
+            // first run on a PC without UsbDk: default to the COM/VCOM engine (the driver SP Flash Tool uses)
+            bool firstRun = !File.Exists(SettingsPath);
             LoadUiSettings();
+            if (firstRun && !MtkClient.UsbDkInstalled) { MtkClient.Serial = true; UpdateEngineUi(); }
             FormClosing += (s, e) => SaveUiSettings();
             LoadProjects(null);
             Log("ברוך הבא! למעלה יש לשונית לכל כלי. הכי פשוט: לחץ \"אשף\" והוא יעבור איתך על הכול.", Color.LightGreen);
@@ -386,10 +389,11 @@ namespace Ro2rwPc
         {
             return new object[]
             {
-                "mtkclient - בטוח (ברירת מחדל)",
+                "mtkclient - USB (דורש UsbDk)",
+                "mtkclient - דרך COM / VCOM (בלי UsbDk) - מומלץ",
                 "מהיר - USB (דורש UsbDk)",
-                "מהיר - serial / COM (בלי UsbDk)",
-                "SP Flash Tool (עובד עם דרייבר ה-VCOM)"
+                "מהיר - serial / COM (ניסיוני, לא יציב)",
+                "SP Flash Tool (צריבה אוטומטית)"
             };
         }
 
@@ -641,8 +645,25 @@ namespace Ro2rwPc
         // ============================================================ engine selection
         void SetEngineByIndex(int i)
         {
-            if (i == 3) SetEngineSp();
-            else SetEngine(i == 0 ? MtkEngine.Mtkclient : MtkEngine.Fast, i == 2);
+            if (i == 4) SetEngineSp();
+            else if (i == 1) SetEngineMtkSerial();
+            else if (i == 0) SetEngine(MtkEngine.Mtkclient, false);
+            else SetEngine(MtkEngine.Fast, i == 3);
+        }
+
+        void SetEngineMtkSerial()
+        {
+            FastEngine.Sp = false;
+            FastEngine.Selected = MtkEngine.Mtkclient;
+            FastEngine.Serial = false;
+            MtkClient.Serial = true;
+            if (string.IsNullOrEmpty(MtkClient.Com))
+            {
+                var com = Prompt("מספר COM של המכשיר (השאר ריק לזיהוי אוטומטי, למשל COM5):", "mtkclient דרך COM");
+                MtkClient.Com = string.IsNullOrEmpty(com) ? null : com.Trim().ToUpperInvariant();
+            }
+            Log("מנוע: mtkclient דרך COM/VCOM (בלי UsbDk). " + (MtkClient.Com ?? "זיהוי אוטומטי") + ". שאיבה = קריאה בלבד.", Color.LightGreen);
+            UpdateEngineUi();
         }
 
         void SetEngine(MtkEngine e) { SetEngine(e, false); }
@@ -651,6 +672,7 @@ namespace Ro2rwPc
         {
             if (e == MtkEngine.Fast && !FastEngine.Available) { Msg(this, "המנוע המהיר לא מובנה בגרסה הזו. הורד את הגרסה האחרונה מדף המהדורות.", MessageBoxIcon.Warning); UpdateEngineUi(); return; }
             FastEngine.Sp = false;
+            MtkClient.Serial = false;
             FastEngine.Selected = e;
             FastEngine.Serial = e == MtkEngine.Fast && serial;
             if (FastEngine.Serial && string.IsNullOrEmpty(FastEngine.Com))
@@ -667,15 +689,16 @@ namespace Ro2rwPc
         void SetEngineSp()
         {
             FastEngine.Sp = true;
+            MtkClient.Serial = false;
             Log("מנוע: SP Flash Tool. צריבה תרוץ אוטומטית דרך SP (Download Only). שאיבה דרך ReadBack של SP (לשונית SP).", Color.Khaki);
             UpdateEngineUi();
         }
 
         int EngineIndex()
         {
-            if (FastEngine.Sp) return 3;
-            if (FastEngine.Selected == MtkEngine.Mtkclient) return 0;
-            return FastEngine.Serial ? 2 : 1;
+            if (FastEngine.Sp) return 4;
+            if (FastEngine.Selected == MtkEngine.Mtkclient) return MtkClient.Serial ? 1 : 0;
+            return FastEngine.Serial ? 3 : 2;
         }
 
         void UpdateEngineUi()
@@ -684,12 +707,12 @@ namespace Ro2rwPc
             int ix = EngineIndex();
             if (cmbEngineDump != null) cmbEngineDump.SelectedIndex = ix;
             if (cmbEngineFlash != null) cmbEngineFlash.SelectedIndex = ix;
-            if (miEngMtk != null) { miEngMtk.Checked = ix == 0; miEngFast.Checked = ix == 1; miEngSerial.Checked = ix == 2; miEngSp.Checked = ix == 3; }
+            if (miEngMtk != null) { miEngMtk.Checked = ix == 0; miEngFast.Checked = ix == 2; miEngSerial.Checked = ix == 3; if (miEngMtkSerial != null) miEngMtkSerial.Checked = ix == 1; miEngSp.Checked = ix == 4; }
             engineUiUpdating = false;
         }
 
         // ============================================================ dump
-        static string EngineName() { return FastEngine.Sp ? "SP Flash Tool" : FastEngine.Selected == MtkEngine.Fast ? "מנוע מהיר" : "mtkclient"; }
+        static string EngineName() { return FastEngine.Sp ? "SP Flash Tool" : FastEngine.Selected == MtkEngine.Fast ? "מנוע מהיר" : MtkClient.Serial ? "mtkclient דרך COM" : "mtkclient"; }
 
         int DumpEngine(Project proj, bool skip)
         {
@@ -732,7 +755,7 @@ namespace Ro2rwPc
                 return;
             }
             if (!MtkClient.Bundled && !File.Exists(MtkClient.Exe)) { Msg(this, "mtkclient לא מובנה בגרסה הזו. הורד את הגרסה האחרונה מדף המהדורות.", MessageBoxIcon.Warning); return; }
-            if (FastEngine.Selected != MtkEngine.Fast && !MtkClient.UsbDkInstalled)
+            if (FastEngine.Selected != MtkEngine.Fast && !MtkClient.Serial && !MtkClient.UsbDkInstalled)
             {
                 var r = MessageBox.Show(this, "כדי ש-mtkclient יזהה את המכשיר צריך את דרייבר UsbDk, והוא לא מותקן.\n\nלהתקין עכשיו? (נדרשות הרשאות מנהל)", "RO2RW PC",
                     MessageBoxButtons.YesNoCancel, MessageBoxIcon.Question, MessageBoxDefaultButton.Button1, MessageBoxOptions.RtlReading | MessageBoxOptions.RightAlign);
@@ -870,11 +893,13 @@ namespace Ro2rwPc
             mDev.DropDownItems.Add("התקן SP Flash Tool לתוך התוכנה...", null, (s, e) => InstallSpIntoTool());
             mDev.DropDownItems.Add(new ToolStripSeparator());
             var mEng = new ToolStripMenuItem("מנוע צריבה / שאיבה");
-            miEngMtk = new ToolStripMenuItem("mtkclient (בטוח, ברירת מחדל)", null, (s, e) => SetEngine(MtkEngine.Mtkclient)) { Checked = true };
+            miEngMtk = new ToolStripMenuItem("mtkclient דרך USB (UsbDk)", null, (s, e) => SetEngine(MtkEngine.Mtkclient)) { Checked = true };
             miEngFast = new ToolStripMenuItem("מנוע מהיר (USB / UsbDk)", null, (s, e) => SetEngine(MtkEngine.Fast, false));
             miEngSerial = new ToolStripMenuItem("מנוע מהיר דרך COM (serial, בלי UsbDk)", null, (s, e) => SetEngine(MtkEngine.Fast, true));
             miEngSp = new ToolStripMenuItem("SP Flash Tool", null, (s, e) => SetEngineSp());
+            miEngMtkSerial = new ToolStripMenuItem("mtkclient דרך COM / VCOM (בלי UsbDk) - מומלץ", null, (s, e) => SetEngineMtkSerial());
             mEng.DropDownItems.Add(miEngMtk);
+            mEng.DropDownItems.Add(miEngMtkSerial);
             mEng.DropDownItems.Add(miEngFast);
             mEng.DropDownItems.Add(miEngSerial);
             mEng.DropDownItems.Add(miEngSp);
@@ -1009,7 +1034,7 @@ namespace Ro2rwPc
             Invoke(new Action(() =>
             {
                 if (!MtkClient.Bundled && !File.Exists(MtkClient.Exe)) { Ui.Msg(this, "mtkclient לא מובנה בגרסה הזו.", MessageBoxIcon.Warning); return; }
-                if (FastEngine.Selected != MtkEngine.Fast && !MtkClient.UsbDkInstalled && !Ui.Ask(this, "דרייבר UsbDk לא מותקן, ובלעדיו mtkclient לא יזהה את המכשיר.\nלהמשיך בכל זאת? (אפשר להתקין מתפריט \"מכשיר\")")) return;
+                if (FastEngine.Selected != MtkEngine.Fast && !MtkClient.Serial && !MtkClient.UsbDkInstalled && !Ui.Ask(this, "דרייבר UsbDk לא מותקן, ובלעדיו mtkclient לא יזהה את המכשיר.\nלהמשיך בכל זאת? (אפשר להתקין מתפריט \"מכשיר\")")) return;
                 ok = MessageBox.Show(this, what + "\n\n" + Ui.BromHelp, "RO2RW PC", MessageBoxButtons.OKCancel, MessageBoxIcon.Information,
                     MessageBoxDefaultButton.Button1, MessageBoxOptions.RtlReading | MessageBoxOptions.RightAlign) == DialogResult.OK;
             }));
@@ -1501,7 +1526,7 @@ namespace Ro2rwPc
                     "sparse=" + cbSparse.Checked, "fstab=" + cbFstab.Checked, "nowifi=" + cbNoWifi.Checked, "abi=" + cmbAbi.SelectedItem, "keepv=" + cbKeepVerity.Checked, "keepe=" + cbKeepEnc.Checked,
                     "lkdelay=" + cbLkDelay.Checked, "lktext=" + cbLkText.Checked, "skipud=" + cbSkipUserdata.Checked, "project=" + (project != null ? project.Name : ""),
                     "recovery=" + cbRecovery.Checked, "vbflag=" + cbPatchVbFlag.Checked, "lkandroid=" + cmbLkAndroid.SelectedIndex, "vbmode=" + cmbVbMode.SelectedIndex,
-                    "projdir=" + (Project.BaseDirOverride ?? ""), "zoom=" + zoom.ToString(System.Globalization.CultureInfo.InvariantCulture), "engine=" + (FastEngine.Sp ? "sp" : FastEngine.Selected == MtkEngine.Fast ? (FastEngine.Serial ? "serial" : "fast") : "mtkclient"), "engcom=" + (FastEngine.Com ?? ""), "sptool=" + (sptoolPath ?? "")
+                    "projdir=" + (Project.BaseDirOverride ?? ""), "zoom=" + zoom.ToString(System.Globalization.CultureInfo.InvariantCulture), "engine=" + (FastEngine.Sp ? "sp" : FastEngine.Selected == MtkEngine.Fast ? (FastEngine.Serial ? "serial" : "fast") : (MtkClient.Serial ? "mtkserial" : "mtkclient")), "engcom=" + (FastEngine.Com ?? ""), "mtkcom=" + (MtkClient.Com ?? ""), "sptool=" + (sptoolPath ?? "")
                 };
                 File.WriteAllLines(SettingsPath, kv);
             }
@@ -1535,9 +1560,11 @@ namespace Ro2rwPc
                 if (d.ContainsKey("vbmode") && int.TryParse(d["vbmode"], out ix) && ix >= 0 && ix < 3) cmbVbMode.SelectedIndex = ix;
                 if (d.ContainsKey("projdir") && d["projdir"].Length > 0 && Directory.Exists(d["projdir"])) Project.BaseDirOverride = d["projdir"];
                 if (d.ContainsKey("engcom") && d["engcom"].Length > 0) FastEngine.Com = d["engcom"];
+                if (d.ContainsKey("mtkcom") && d["mtkcom"].Length > 0) MtkClient.Com = d["mtkcom"];
                 if (d.ContainsKey("engine"))
                 {
                     if (d["engine"] == "sp") SetEngineSp();
+                    else if (d["engine"] == "mtkserial") SetEngineMtkSerial();
                     else if (FastEngine.Available && d["engine"] == "serial") SetEngine(MtkEngine.Fast, true);
                     else if (FastEngine.Available && d["engine"] == "fast") SetEngine(MtkEngine.Fast, false);
                 }
