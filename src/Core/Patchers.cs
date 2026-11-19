@@ -202,14 +202,60 @@ namespace Ro2rwPc
             return dest;
         }
 
+        /// <summary>Maps user input ("26", "v26", "26.4") to a release tag from the list; null when nothing matches.</summary>
+        public static string ResolveTag(string input, IEnumerable<string> tags)
+        {
+            string t = input.Trim();
+            if (t.StartsWith("v", StringComparison.OrdinalIgnoreCase)) t = t.Substring(1);
+            if (!Regex.IsMatch(t, @"^\d+(\.\d+)*$")) return null;
+            var releases = tags.Where(x => Regex.IsMatch(x, @"^v\d+(\.\d+)*$")).ToList();
+            string exact = releases.FirstOrDefault(x => x == "v" + t);
+            if (exact != null) return exact;
+            // a shorter version ("26") means the newest release of that series
+            return releases.Where(x => x.StartsWith("v" + t + ".")).OrderByDescending(VersionKey).FirstOrDefault();
+        }
+
+        static long VersionKey(string tag)
+        {
+            long k = 0;
+            var parts = tag.Substring(1).Split('.');
+            for (int i = 0; i < 4; i++) k = k * 10000 + (i < parts.Length ? long.Parse(parts[i]) : 0);
+            return k;
+        }
+
+        static List<string> ReleaseTags(Action<string> log)
+        {
+            var tags = new List<string>();
+            for (int page = 1; page <= 5; page++)
+            {
+                string json;
+                using (var wc = new WebClient())
+                {
+                    wc.Headers.Add("User-Agent", "RO2RW-PC");
+                    json = wc.DownloadString("https://api.github.com/repos/topjohnwu/Magisk/releases?per_page=100&page=" + page);
+                }
+                int before = tags.Count;
+                foreach (Match m in Regex.Matches(json, "\"tag_name\"\\s*:\\s*\"([^\"]+)\"")) tags.Add(m.Groups[1].Value);
+                if (tags.Count == before) break;
+            }
+            return tags;
+        }
+
         /// <summary>Downloads a specific Magisk version (e.g. "26.4" or "v26.4") from GitHub into toolsDir and returns its path.</summary>
         public static string DownloadApkVersion(string toolsDir, string version, Action<string> log)
         {
             Directory.CreateDirectory(toolsDir);
             string tag = version.Trim();
             if (tag.Length == 0) throw new ArgumentException("לא הוזנה גרסה");
-            if (!tag.StartsWith("v", StringComparison.OrdinalIgnoreCase)) tag = "v" + tag;
             try { ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls12; } catch { }
+            try
+            {
+                string resolved = ResolveTag(tag, ReleaseTags(log));
+                if (resolved == null) throw new IOException("לא נמצאה גרסת Magisk " + tag + " בדף המהדורות של Magisk. נסה מספר אחר (למשל 26.4).");
+                if (!string.Equals(resolved.TrimStart('v'), tag.TrimStart('v', 'V'), StringComparison.Ordinal)) log("  גרסה " + tag + " ← " + resolved + " (האחרונה בסדרה)");
+                tag = resolved;
+            }
+            catch (WebException) { throw new IOException("לא ניתן להתחבר ל-GitHub כדי לבדוק את רשימת הגרסאות."); }
             log("  מוריד Magisk " + tag + " מ-GitHub...");
             string json;
             using (var wc = new WebClient())

@@ -205,6 +205,20 @@ static class TestMain
                         Console.WriteLine("CONFIG=" + SpFlashTool.BuildConfig(a[1], a[2], a[3], "MT6765", false, roms, a.Length > 4 ? a[4] : null));
                         return 0;
                     }
+                case "magisktag":
+                    {
+                        // magisktag <input> <tag>...  -> prints the resolved tag or "null"
+                        Console.WriteLine(MagiskPatcher.ResolveTag(a[1], a.Skip(2)) ?? "null");
+                        return 0;
+                    }
+                case "pumplines":
+                    {
+                        // pumplines <text with \r and \n escapes>  -> prints L:<log line> / S:<status line>
+                        string text = a[1].Replace("\\r", "\r").Replace("\\n", "\n");
+                        var cap = new System.Text.StringBuilder();
+                        MtkClient.PumpLines(new StringReader(text), cap, s => Console.WriteLine("L:" + s.Trim()), s => Console.WriteLine("S:" + s.Trim()));
+                        return 0;
+                    }
                 case "ls":
                     using (var src = new RawFileSource(a[1]))
                     {

@@ -6,6 +6,7 @@ W=${1:-$(mktemp -d)}
 mkdir -p "$W"
 mcs -nologo -r:System.IO.Compression -r:System.IO.Compression.FileSystem -out:"$W/t.exe" "$ROOT"/src/Core/*.cs "$ROOT/tests/TestMain.cs"
 T="mono $W/t.exe"
+bash "$ROOT/tests/logic-tests.sh" "$T"
 V="$ROOT/tests/verify.sh"
 cd "$W"; rm -rf src; mkdir -p src/etc src/bin src/app/deep/dir src/big src/many
 echo hello > src/etc/a.txt; : > src/etc/empty

@@ -220,25 +220,38 @@ namespace Ro2rwPc
 
         static readonly Regex Ansi = new Regex(@"\x1B\[[0-9;?]*[A-Za-z]");
 
-        void Pump(StreamReader r, StringBuilder captured)
+        void Pump(StreamReader r, StringBuilder captured) { PumpLines(r, captured, s => Log(s), s => Status(s)); }
+
+        /// <summary>Splits child-process output into lines: progress goes to status, everything else to the log.</summary>
+        public static void PumpLines(TextReader r, StringBuilder captured, Action<string> log, Action<string> status)
         {
             var line = new StringBuilder();
             var buf = new char[1];
+            string crLine = null;   // non-progress text that ended with \r: a log line if \n follows (CRLF), otherwise an in-place status update
             while (r.Read(buf, 0, 1) > 0)
             {
                 char c = buf[0];
+                if (crLine != null)
+                {
+                    if (c == '\n') { log("  " + crLine); crLine = null; continue; }
+                    status(crLine);
+                    crLine = null;
+                }
                 if (c == '\n' || c == '\r')
                 {
                     string s = Ansi.Replace(line.ToString(), "").TrimEnd();
                     line.Clear();
                     if (s.Length == 0) continue;
                     lock (captured) captured.AppendLine(s);
-                    if (c == '\r' || s.Contains("Progress:") || Regex.IsMatch(s, @"\d+(\.\d+)?%")) Status(s);
-                    else Log("  " + s);
+                    bool progress = s.Contains("Progress:") || Regex.IsMatch(s, @"\d+(\.\d+)?%");
+                    if (progress) status(s);
+                    else if (c == '\r') crLine = s;
+                    else log("  " + s);
                 }
                 else line.Append(c);
             }
-            if (line.Length > 0) { var s = Ansi.Replace(line.ToString(), "").Trim(); if (s.Length > 0) { lock (captured) captured.AppendLine(s); Log("  " + s); } }
+            if (crLine != null) log("  " + crLine);
+            if (line.Length > 0) { var s = Ansi.Replace(line.ToString(), "").Trim(); if (s.Length > 0) { lock (captured) captured.AppendLine(s); log("  " + s); } }
         }
 
         /// <summary>Full dump into the project: mtk rl → rename to .img → scatter.</summary>
