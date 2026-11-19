@@ -716,7 +716,7 @@ namespace Ro2rwPc
 
         int DumpEngine(Project proj, bool skip)
         {
-            if (FastEngine.Sp) throw new InvalidOperationException("לשאיבה דרך SP Flash Tool השתמש בלשונית SP (ReadBack), או בחר מנוע mtkclient / מהיר.");
+            if (FastEngine.Sp) throw new InvalidOperationException("שאיבה דרך SP Flash Tool רצה מ-DumpRomSp, לא מכאן.");
             if (FastEngine.Selected == MtkEngine.Fast)
                 return FastEngine.DumpProject(proj, skip, s => Log(s), SetStatus, () => cancel);
             return new MtkClient { Log = s => Log(s), Status = SetStatus, Cancelled = () => cancel }.DumpProject(proj, skip);
@@ -748,12 +748,7 @@ namespace Ro2rwPc
         void DumpRom()
         {
             if (project == null) { Msg(this, "צור או בחר פרויקט קודם (שם המכשיר)."); return; }
-            if (FastEngine.Sp)
-            {
-                Msg(this, "שאיבה דרך SP Flash Tool נעשית ב-ReadBack (ממשק SP). פותח את המדריך.");
-                ShowSpGuide();
-                return;
-            }
+            if (FastEngine.Sp) { DumpRomSp(); return; }
             if (!MtkClient.Bundled && !File.Exists(MtkClient.Exe)) { Msg(this, "mtkclient לא מובנה בגרסה הזו. הורד את הגרסה האחרונה מדף המהדורות.", MessageBoxIcon.Warning); return; }
             if (FastEngine.Selected != MtkEngine.Fast && !MtkClient.Serial && !MtkClient.UsbDkInstalled)
             {
@@ -789,6 +784,79 @@ namespace Ro2rwPc
                 catch (OperationCanceledException) { Log("בוטל.", Color.Khaki); }
                 catch (Exception ex) { Log("✖ " + ex.Message); }
                 finally { SetStatus(""); SetBusy(false); BeginInvoke(new Action(RefreshFiles)); }
+            }) { IsBackground = true };
+            worker.Start();
+        }
+
+        // SP Flash Tool ReadBack (read only) straight into the project, driven from the UI
+        void DumpRomSp()
+        {
+            if (ResolveSpTool() == null)
+            {
+                using (var d = new OpenFileDialog { Title = "בחר את flash_tool.exe (או: לשונית SP ← התקן SP לתוך התוכנה)", Filter = "SP Flash Tool|flash_tool*.exe;FlashTool*.exe|כל הקבצים|*.exe" })
+                { if (d.ShowDialog(this) != DialogResult.OK) return; sptoolPath = d.FileName; }
+            }
+            string da = SpFlashTool.FindDa(sptoolPath);
+            if (da == null)
+            {
+                using (var d = new OpenFileDialog { Title = "בחר MTK_AllInOne_DA.bin", Filter = "DA|*.bin|כל הקבצים|*.*" })
+                { if (d.ShowDialog(this) != DialogResult.OK) return; da = d.FileName; }
+            }
+            string scatter = Directory.GetFiles(project.Root, "*scatter*.txt").OrderBy(x => x).FirstOrDefault();
+            string platform = null; bool ufs = false; List<string> parts;
+            if (scatter != null)
+            {
+                string stext = File.ReadAllText(scatter);
+                var pm = System.Text.RegularExpressions.Regex.Match(stext, @"platform:\s*(MT[0-9]{4}[A-Z]?)");
+                if (pm.Success) platform = pm.Groups[1].Value.ToUpperInvariant();
+                ufs = System.Text.RegularExpressions.Regex.IsMatch(stext, @"storage:\s*UFS", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                parts = SpFlashTool.ScatterPartitions(scatter, cbSkipUserdata.Checked);
+            }
+            else parts = new List<string>(SpFlashTool.DefaultReadbackPartitions);
+            if (platform == null)
+            {
+                platform = Prompt("דגם המעבד (למשל MT6765):", "SP Flash Tool - ReadBack");
+                if (string.IsNullOrWhiteSpace(platform)) return;
+                platform = platform.Trim().ToUpperInvariant();
+            }
+            string com = Prompt("מספר COM של המכשיר (אופציונלי - ריק = זיהוי אוטומטי דרך USB, למשל COM40):", "SP Flash Tool - ReadBack");
+            if (com != null) com = com.Trim();
+            if (!Ui.Ask(this,
+                "ReadBack דרך SP Flash Tool (קריאה בלבד, לא נכתב כלום למכשיר) לפרויקט \"" + project.Name + "\":\n\n" +
+                (scatter != null ? "מחיצות לפי ה-scatter של הפרויקט (" + parts.Count + ").\n" : "אין scatter בפרויקט - נשאבות המחיצות הנפוצות לעריכה:\n   " + string.Join(", ", parts) + "\n") +
+                "\nכבה את המכשיר, לחץ כן, ואז חבר אותו עם לחצני העוצמה.\n\nלהמשיך?")) return;
+            cancel = false; SetBusy(true); SetStatus("");
+            var proj = project; string ft = sptoolPath; string comPort = string.IsNullOrEmpty(com) ? null : com;
+            worker = new Thread(() =>
+            {
+                var sw = Stopwatch.StartNew();
+                string tmp = Path.Combine(proj.Root, "_sp_dump");
+                try
+                {
+                    Log(""); Log("▶ ReadBack דרך SP Flash Tool - ממתין למכשיר במצב BROM...", Color.DeepSkyBlue);
+                    if (Directory.Exists(tmp)) Directory.Delete(tmp, true);
+                    Directory.CreateDirectory(tmp);
+                    string cfg = SpFlashTool.BuildReadbackConfig(tmp, tmp, da, platform, ufs, parts, comPort);
+                    var runner = new MtkClient { Log = s => Log(s), Status = SetStatus, Cancelled = () => cancel };
+                    var done = SpFlashTool.RunReadback(ft, cfg, tmp, parts, comPort, runner);
+                    foreach (var p in done)
+                    {
+                        string dst = Path.Combine(proj.Root, p + ".img");
+                        if (File.Exists(dst)) File.Delete(dst);
+                        File.Move(SpFlashTool.ReadbackFile(tmp, p), dst);
+                    }
+                    var missing = parts.Except(done).ToList();
+                    if (missing.Count > 0) Log("! לא נשאבו: " + string.Join(", ", missing), Color.Khaki);
+                    Log(string.Format("✔ נשאבו {0} מחיצות לתוך הפרויקט ({1})", done.Count, sw.Elapsed.ToString(@"hh\:mm\:ss")), Color.LightGreen);
+                }
+                catch (OperationCanceledException) { Log("בוטל.", Color.Khaki); }
+                catch (Exception ex) { Log("✖ " + ex.Message); }
+                finally
+                {
+                    try { var lg = Path.Combine(tmp, "sp_readback_log.txt"); if (File.Exists(lg)) File.Copy(lg, Path.Combine(proj.Root, "sp_readback_log.txt"), true); } catch { }
+                    try { Directory.Delete(tmp, true); } catch { }
+                    SetStatus(""); SetBusy(false); BeginInvoke(new Action(RefreshFiles));
+                }
             }) { IsBackground = true };
             worker.Start();
         }

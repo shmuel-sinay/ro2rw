@@ -190,6 +190,21 @@ static class TestMain
                         Console.WriteLine("CONFIG=" + cfg);
                         return 0;
                     }
+                case "spreadback":
+                    {
+                        // spreadback <outDir> <daFile> <platform> [COMx]  -> writes sp_readback_config.xml; also a download config with the same COM
+                        string com = a.Length > 4 ? a[4] : null;
+                        var parts = SpFlashTool.DefaultReadbackPartitions;
+                        Console.WriteLine("CONFIG=" + SpFlashTool.BuildReadbackConfig(a[1], a[1], a[2], a[3], false, parts, com));
+                        return 0;
+                    }
+                case "spdlconfig":
+                    {
+                        // spdlconfig <outDir> <scatter> <daFile> [COMx]
+                        var roms = SpFlashTool.EnabledRoms(a[2], a[1]);
+                        Console.WriteLine("CONFIG=" + SpFlashTool.BuildConfig(a[1], a[2], a[3], "MT6765", false, roms, a.Length > 4 ? a[4] : null));
+                        return 0;
+                    }
                 case "ls":
                     using (var src = new RawFileSource(a[1]))
                     {
