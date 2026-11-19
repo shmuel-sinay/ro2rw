@@ -46,7 +46,7 @@ namespace Ro2rwPc
         // new: tabbed UI
         TabControl tabs;
         ComboBox cmbFileRo2rw, cmbFileMagisk, cmbFileAvb, cmbFileLk;
-        Button btnRunRo2rw, btnRunMagisk, btnRunAvb, btnRunLk, btnDumpGo, btnFlashEdited, btnFlashPick;
+        Button btnDumpGo, btnFlashEdited, btnFlashPick;
         ComboBox cmbEngineDump, cmbEngineFlash;
         bool engineUiUpdating;
 
@@ -99,17 +99,32 @@ namespace Ro2rwPc
 
             root.Controls.Add(BuildProjectBar(), 0, 0);
 
-            tabs = new TabControl { Dock = DockStyle.Fill, RightToLeftLayout = true, Padding = new Point(16, 6) };
-            tabs.TabPages.Add(BuildFilesTab());
-            tabs.TabPages.Add(BuildRo2rwTab());
-            tabs.TabPages.Add(BuildMagiskTab());
-            tabs.TabPages.Add(BuildAvbTab());
-            tabs.TabPages.Add(BuildLkTab());
-            tabs.TabPages.Add(BuildDumpTab());
-            tabs.TabPages.Add(BuildFlashTab());
-            tabs.TabPages.Add(BuildSpTab());
-            tabs.TabPages.Add(BuildToolsTab());
-            root.Controls.Add(tabs, 0, 1);
+            // pages are tab pages with the headers hidden; the rail on the side picks the page
+            tabs = new TabControl { Dock = DockStyle.Fill, RightToLeftLayout = true, Appearance = TabAppearance.FlatButtons, SizeMode = TabSizeMode.Fixed, ItemSize = new Size(0, 1), Padding = new Point(0, 0), Margin = new Padding(0) };
+            tabs.TabPages.Add(BuildFilesTab());   // 0
+            tabs.TabPages.Add(BuildEditTab());    // 1
+            tabs.TabPages.Add(BuildDumpTab());    // 2
+            tabs.TabPages.Add(BuildFlashTab());   // 3
+            tabs.TabPages.Add(BuildSpTab());      // 4
+            tabs.TabPages.Add(BuildToolsTab());   // 5
+            rail = new StepRail { Dock = DockStyle.Fill };
+            rail.AddHeader("תהליך עבודה");
+            rail.Add("שאיבה מהמכשיר", "גיבוי לפרויקט", 1, 2);
+            rail.Add("עריכה", "Root, AVB, LK, מקום", 2, 1);
+            rail.Add("צריבה למכשיר", "", 3, 3);
+            rail.AddHeader("ניהול");
+            rail.Add("קבצי הפרויקט", "", 0, 0);
+            rail.Add("SP Flash Tool", "", 0, 4);
+            rail.Add("כלים נוספים", "", 0, 5);
+            rail.SelectedChanged += (s, e) => { if (rail.SelectedPage >= 0) tabs.SelectedIndex = rail.SelectedPage; };
+            rail.Select(1);
+            var body = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1, Margin = new Padding(0) };
+            body.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 214));
+            body.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            body.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+            body.Controls.Add(rail, 0, 0);
+            body.Controls.Add(tabs, 1, 0);
+            root.Controls.Add(body, 0, 1);
 
             log = new RichTextBox
             {
@@ -132,20 +147,20 @@ namespace Ro2rwPc
 
         Control BuildProjectBar()
         {
-            var p = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, FlowDirection = FlowDirection.RightToLeft, WrapContents = true, Margin = new Padding(0, 0, 0, 4) };
-            var title = new Label { Text = "RO2RW PC", Font = fTitle, AutoSize = true, ForeColor = Accent, Margin = new Padding(6, 6, 6, 0) };
+            var p = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, FlowDirection = FlowDirection.RightToLeft, WrapContents = true, Margin = new Padding(0, 0, 0, 6), Padding = new Padding(8, 4, 8, 8), BackColor = Accent };
+            var title = new Label { Text = "RO2RW PC", Font = fTitle, AutoSize = true, ForeColor = Color.White, Margin = new Padding(6, 6, 6, 0) };
             cmbProject = new ComboBox { Size = new Size(220, 28), DropDownStyle = ComboBoxStyle.DropDownList, Margin = new Padding(6, 8, 6, 0) };
             cmbProject.SelectedIndexChanged += (s, e) => { if (cmbProject.SelectedItem != null) OpenProject((string)cmbProject.SelectedItem); };
-            btnNewProj = new Button { Text = "פרויקט חדש", Size = new Size(120, 32), Margin = new Padding(4, 6, 4, 0) };
+            btnNewProj = new Button { Text = "פרויקט חדש", Size = new Size(120, 32), Margin = new Padding(4, 6, 4, 0), BackColor = Color.White };
             btnNewProj.Click += (s, e) => NewProject();
-            btnOpenDir = new Button { Text = "פתח תיקייה", Size = new Size(100, 32), Margin = new Padding(4, 6, 4, 0) };
+            btnOpenDir = new Button { Text = "פתח תיקייה", Size = new Size(100, 32), Margin = new Padding(4, 6, 4, 0), BackColor = Color.White };
             btnOpenDir.Click += (s, e) => { if (project != null) Process.Start("explorer.exe", "\"" + project.Root + "\""); };
-            btnOpenEdited = new Button { Text = "פתח \"ערוך\"", Size = new Size(100, 32), Margin = new Padding(4, 6, 4, 0) };
+            btnOpenEdited = new Button { Text = "פתח \"ערוך\"", Size = new Size(100, 32), Margin = new Padding(4, 6, 4, 0), BackColor = Color.White };
             btnOpenEdited.Click += (s, e) => { if (project != null) Process.Start("explorer.exe", "\"" + project.Edited + "\""); };
-            btnWizard = new Button { Text = "🧙 אשף", Size = new Size(110, 32), Margin = new Padding(4, 6, 4, 0), BackColor = Color.FromArgb(21, 101, 192), ForeColor = Color.White, FlatStyle = FlatStyle.Flat, Font = fBold };
+            btnWizard = new Button { Text = "אשף", Size = new Size(110, 32), Margin = new Padding(4, 6, 4, 0), Font = fBold, BackColor = Color.White };
             btnWizard.Click += (s, e) => RunWizard();
-            lblProj = new Label { AutoSize = true, ForeColor = Color.DimGray, Margin = new Padding(6, 12, 6, 0), MaximumSize = new Size(360, 24), AutoEllipsis = true };
-            p.Controls.AddRange(new Control[] { title, new Label { Text = "פרויקט:", AutoSize = true, Margin = new Padding(6, 12, 2, 0) }, cmbProject, btnNewProj, btnOpenDir, btnOpenEdited, btnWizard, lblProj });
+            lblProj = new Label { AutoSize = true, ForeColor = Color.FromArgb(200, 220, 245), Margin = new Padding(6, 12, 6, 0), MaximumSize = new Size(360, 24), AutoEllipsis = true };
+            p.Controls.AddRange(new Control[] { title, new Label { Text = "פרויקט:", AutoSize = true, ForeColor = Color.White, Margin = new Padding(6, 12, 2, 0) }, cmbProject, btnNewProj, btnOpenDir, btnOpenEdited, btnWizard, lblProj });
             return p;
         }
 
@@ -190,7 +205,7 @@ namespace Ro2rwPc
 
         TabPage BuildFilesTab()
         {
-            var t = ToolPage("📁 פרויקט וקבצים");
+            var t = ToolPage("פרויקט וקבצים");
             lvFiles = new ListView { View = View.Details, CheckBoxes = true, FullRowSelect = true, Location = new Point(8, 36), Size = new Size(640, 300), RightToLeftLayout = true, Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right };
             lvFiles.Columns.Add("קובץ", 180); lvFiles.Columns.Add("סוג", 110); lvFiles.Columns.Add("גודל", 90); lvFiles.Columns.Add("עריכה", 170); lvFiles.Columns.Add("ערוך", 50);
             lvFiles.ItemCheck += (s, e) =>
@@ -199,7 +214,7 @@ namespace Ro2rwPc
                 if (pf == null || pf.Action == EditAction.None) e.NewValue = CheckState.Unchecked;
                 else pf.Selected = e.NewValue == CheckState.Checked;
             };
-            btnAddFiles = new Button { Text = "➕ הוסף קבצים", Location = new Point(8, 344), Size = new Size(130, 34), Anchor = AnchorStyles.Bottom | AnchorStyles.Left };
+            btnAddFiles = new Button { Text = "הוסף קבצים", Location = new Point(8, 344), Size = new Size(130, 34), Anchor = AnchorStyles.Bottom | AnchorStyles.Left };
             btnAddFiles.Click += (s, e) => PickFiles();
             btnRefresh = new Button { Text = "רענן", Location = new Point(146, 344), Size = new Size(70, 34), Anchor = AnchorStyles.Bottom | AnchorStyles.Left };
             btnRefresh.Click += (s, e) => RefreshFiles();
@@ -219,92 +234,203 @@ namespace Ro2rwPc
             return t;
         }
 
-        TabPage BuildRo2rwTab()
+        // ============================================================ edit screen (goals with switches; each goal's options are collapsible)
+        GoalRow goalMagisk, goalAvb, goalLk, goalRo2rw;
+        StepRail rail;
+        Label lblGoalSummary;
+        Button btnRunGoals;
+
+        static TableLayoutPanel OptRow(string label, Control c)
         {
-            var t = ToolPage("RO2RW (super)");
-            t.Controls.Add(Head("RO2RW - super לקריאה-וכתיבה"));
-            t.Controls.Add(Sub("ממיר את super.img מ-EROFS / ext4 לקריאה-בלבד ל-ext4 לקריאה-וכתיבה, עם מקום פנוי להוסיף אפליקציות מערכת.", 34));
-            cmbFileRo2rw = FileRow(t, 62, "קובץ super:");
-            rbMax = new RadioButton { Text = "אחוזים מהמקום הפנוי (MAX)", Location = new Point(6, 100), Size = new Size(370, 24), Checked = true };
-            int y = 128;
-            nS = Num(t, "System", 6, y, 70); nV = Num(t, "Vendor", 80, y, 10); nP = Num(t, "Product", 154, y, 10); nSE = Num(t, "Sys_ext", 228, y, 5); nOT = Num(t, "אחרות", 302, y, 5);
-            lblTotal = new Label { Location = new Point(6, 180), Size = new Size(420, 22) };
-            rbFixed = new RadioButton { Text = "גודל קבוע לכל מחיצה (FIXED), MB:", Location = new Point(6, 208), Size = new Size(260, 24) };
-            nFixed = new NumericUpDown { Location = new Point(272, 207), Size = new Size(90, 26), Maximum = 100000, Value = 200 };
-            cbSparse = new CheckBox { Text = "פלט sparse (קטן יותר)", Location = new Point(6, 244), Size = new Size(370, 24), Checked = true };
-            cbFstab = new CheckBox { Text = "הוסף שורות ext4 ל-fstab של vendor", Location = new Point(6, 270), Size = new Size(420, 24), Checked = true };
-            cbNoWifi = new CheckBox { Text = "הסר WiFi (מכשיר מסונן - מוחק wpa_supplicant מ-vendor)", Location = new Point(6, 296), Size = new Size(480, 24) };
-            btnPlan = new Button { Text = "תכנון מפורט לפי מחיצה...", Location = new Point(6, 326), Size = new Size(230, 32) };
+            var r = new TableLayoutPanel { ColumnCount = 2, RowCount = 1, AutoSize = true, Margin = new Padding(0, 0, 0, 6) };
+            r.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 110));
+            r.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+            r.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            r.Controls.Add(new Label { Text = label, AutoSize = true, Margin = new Padding(0, 6, 0, 0) }, 0, 0);
+            c.Margin = new Padding(0);
+            r.Controls.Add(c, 1, 0);
+            return r;
+        }
+
+        static ComboBox FileCombo() { return new ComboBox { Size = new Size(360, 28), DropDownStyle = ComboBoxStyle.DropDownList, DisplayMember = "Name" }; }
+
+        static CheckBox Opt(string text, bool on) { return new CheckBox { Text = text, AutoSize = true, Checked = on, Margin = new Padding(0, 0, 0, 4) }; }
+
+        TabPage BuildEditTab()
+        {
+            var t = ToolPage("עריכה");
+            t.Padding = new Padding(18, 14, 18, 0);
+            var page = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 4 };
+            page.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            page.RowStyles.Add(new RowStyle(SizeType.Absolute, 40));
+            page.RowStyles.Add(new RowStyle(SizeType.Absolute, 30));
+            page.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+            page.RowStyles.Add(new RowStyle(SizeType.Absolute, 64));
+            page.Controls.Add(new Label { Text = "עריכה", Font = fTitle, AutoSize = true, ForeColor = CardText }, 0, 0);
+            page.Controls.Add(new Label { Text = "בחר את העריכות לביצוע. הקבצים נלקחים מהפרויקט, המקור אינו משתנה, והפלט נשמר בתיקייה \"ערוך\".", AutoSize = true, ForeColor = Color.FromArgb(90, 99, 110) }, 0, 1);
+
+            goalMagisk = new GoalRow("Root עם Magisk");
+            BuildMagiskOptions(goalMagisk.Options);
+            goalAvb = new GoalRow("ביטול AVB");
+            BuildAvbOptions(goalAvb.Options);
+            goalLk = new GoalRow("הסרת Orange State");
+            BuildLkOptions(goalLk.Options);
+            goalRo2rw = new GoalRow("הוספת מקום במחיצות");
+            BuildRo2rwOptions(goalRo2rw.Options);
+
+            var list = new TableLayoutPanel { ColumnCount = 1, AutoSize = true, Dock = DockStyle.Top };
+            list.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            var rows = new[] { goalMagisk, goalAvb, goalLk, goalRo2rw };
+            for (int i = 0; i < rows.Length; i++)
+            {
+                list.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+                list.Controls.Add(rows[i], 0, i);
+                rows[i].Switch.CheckedChanged += (s, e) => UpdateGoalSummary();
+            }
+            var host = new Panel { Dock = DockStyle.Fill, AutoScroll = true };
+            host.Controls.Add(list);
+            page.Controls.Add(host, 0, 2);
+
+            var foot = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1, Padding = new Padding(0, 10, 0, 10) };
+            foot.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            foot.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 190));
+            lblGoalSummary = new Label { AutoSize = false, Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleRight, ForeColor = Color.FromArgb(90, 99, 110) };
+            btnRunGoals = new Button { Text = "בצע עריכה", Dock = DockStyle.Fill, Font = new Font("Segoe UI", 11f, FontStyle.Bold), BackColor = Color.FromArgb(46, 125, 50), ForeColor = Color.White, FlatStyle = FlatStyle.Flat };
+            btnRunGoals.Click += (s, e) => RunGoals();
+            foot.Controls.Add(lblGoalSummary, 0, 0);
+            foot.Controls.Add(btnRunGoals, 1, 0);
+            page.Controls.Add(foot, 0, 3);
+            t.Controls.Add(page);
+
+            foreach (var c in new[] { cmbFileMagisk, cmbFileAvb, cmbFileLk, cmbFileRo2rw })
+                c.SelectedIndexChanged += (s, e) => UpdateGoalRows();
+            UpdateGoalRows();
+            return t;
+        }
+
+        void BuildMagiskOptions(Control p)
+        {
+            cmbFileMagisk = FileCombo();
+            p.Controls.Add(OptRow("קובץ:", cmbFileMagisk));
+            cmbAbi = new ComboBox { Size = new Size(160, 28), DropDownStyle = ComboBoxStyle.DropDownList };
+            cmbAbi.Items.AddRange(new object[] { "auto", "arm64-v8a", "armeabi-v7a", "x86_64", "x86" });
+            cmbAbi.SelectedIndex = 0;
+            p.Controls.Add(OptRow("ABI:", cmbAbi));
+            cbKeepVerity = Opt("השאר verity (KEEPVERITY)", false);
+            cbKeepEnc = Opt("השאר הצפנה כפויה (KEEPFORCEENCRYPT)", false);
+            cbRecovery = Opt("מצב recovery (RECOVERYMODE)", false);
+            cbPatchVbFlag = Opt("כבה אימות ב-vbmeta של ה-boot (PATCHVBMETAFLAG)", false);
+            lblMagisk = new Label { AutoSize = true, ForeColor = Color.DimGray, Margin = new Padding(0, 4, 0, 4) };
+            var btns = new FlowLayoutPanel { AutoSize = true, WrapContents = false, Margin = new Padding(0) };
+            var btnApk = new Button { Text = "בחר Magisk.apk אחר...", Size = new Size(190, 30) };
+            btnApk.Click += (s, e) => PickMagiskApk();
+            var btnVer = new Button { Text = "הורד גרסה (למשל 26)...", Size = new Size(190, 30) };
+            btnVer.Click += (s, e) => DownloadMagiskVersion();
+            btns.Controls.AddRange(new Control[] { btnApk, btnVer });
+            p.Controls.AddRange(new Control[] { cbKeepVerity, cbKeepEnc, cbRecovery, cbPatchVbFlag, lblMagisk, btns });
+            UpdateMagiskLabel();
+        }
+
+        void BuildAvbOptions(Control p)
+        {
+            cmbFileAvb = FileCombo();
+            p.Controls.Add(OptRow("קובץ:", cmbFileAvb));
+            cmbVbMode = new ComboBox { Size = new Size(260, 28), DropDownStyle = ComboBoxStyle.DropDownList };
+            cmbVbMode.Items.AddRange(new object[] { "הכול (verity + verification)", "רק verity (hashtree)", "רק verification (חתימות)" });
+            cmbVbMode.SelectedIndex = 0;
+            p.Controls.Add(OptRow("מה לכבות:", cmbVbMode));
+        }
+
+        void BuildLkOptions(Control p)
+        {
+            cmbFileLk = FileCombo();
+            p.Controls.Add(OptRow("קובץ:", cmbFileLk));
+            cbLkDelay = Opt("בטל את ההשהיה של 5 שניות", true);
+            cbLkText = Opt("מחק את טקסט האזהרה מהמסך", true);
+            cmbLkAndroid = new ComboBox { Size = new Size(200, 28), DropDownStyle = ComboBoxStyle.DropDownList };
+            cmbLkAndroid.Items.AddRange(new object[] { "זיהוי אוטומטי", "אנדרואיד 9 ומטה", "אנדרואיד 10 ומעלה" });
+            cmbLkAndroid.SelectedIndex = 0;
+            p.Controls.AddRange(new Control[] { cbLkDelay, cbLkText });
+            p.Controls.Add(OptRow("גרסת אנדרואיד:", cmbLkAndroid));
+        }
+
+        void BuildRo2rwOptions(Control p)
+        {
+            cmbFileRo2rw = FileCombo();
+            p.Controls.Add(OptRow("קובץ:", cmbFileRo2rw));
+            rbMax = new RadioButton { Text = "אחוזים מהמקום הפנוי (MAX)", AutoSize = true, Checked = true, Margin = new Padding(0, 0, 0, 4) };
+            var pct = new Panel { Size = new Size(390, 54), Margin = new Padding(0, 0, 0, 2) };
+            nS = Num(pct, "System", 6, 0, 70); nV = Num(pct, "Vendor", 80, 0, 10); nP = Num(pct, "Product", 154, 0, 10); nSE = Num(pct, "Sys_ext", 228, 0, 5); nOT = Num(pct, "אחרות", 302, 0, 5);
+            lblTotal = new Label { AutoSize = true, Margin = new Padding(0, 0, 0, 6) };
+            rbFixed = new RadioButton { Text = "גודל קבוע לכל מחיצה (FIXED)", AutoSize = true, Margin = new Padding(0, 0, 0, 4) };
+            nFixed = new NumericUpDown { Size = new Size(90, 26), Maximum = 100000, Value = 200 };
+            cbSparse = Opt("פלט sparse (קטן יותר)", true);
+            cbFstab = Opt("הוסף שורות ext4 ל-fstab של vendor", true);
+            cbNoWifi = Opt("הסר WiFi (מכשיר מסונן - מוחק wpa_supplicant מ-vendor)", false);
+            btnPlan = new Button { Text = "תכנון מפורט לפי מחיצה...", Size = new Size(230, 32) };
             btnPlan.Click += (s, e) => OpenSuperPlan(SelectedToolPath(cmbFileRo2rw));
-            t.Controls.AddRange(new Control[] { rbMax, lblTotal, rbFixed, nFixed, cbSparse, cbFstab, cbNoWifi, btnPlan });
-            btnRunRo2rw = RunButton(t, "בצע RO2RW", (s, e) => RunToolOnTab(EditAction.Ro2rw, cmbFileRo2rw, "בחר super.img"));
+            p.Controls.AddRange(new Control[] { rbMax, pct, lblTotal, rbFixed });
+            p.Controls.Add(OptRow("MB:", nFixed));
+            p.Controls.AddRange(new Control[] { cbSparse, cbFstab, cbNoWifi, btnPlan });
             EventHandler upd = (s, e) => UpdateSizeUi();
             foreach (var n in new[] { nS, nV, nP, nSE, nOT }) n.ValueChanged += upd;
             rbMax.CheckedChanged += upd;
             UpdateSizeUi();
-            return t;
         }
 
-        TabPage BuildMagiskTab()
+        // description under each goal, and a default of "on" the first time a matching file shows up
+        void UpdateGoalRows()
         {
-            var t = ToolPage("Root (Magisk)");
-            t.Controls.Add(Head("Root עם Magisk"));
-            t.Controls.Add(Sub("עריכת boot / init_boot על המחשב, בדיוק כמו אפליקציית Magisk. אחרי הצריבה מתקינים את אפליקציית Magisk בטלפון.", 34));
-            cmbFileMagisk = FileRow(t, 62, "קובץ boot:");
-            t.Controls.Add(new Label { Text = "ABI של המכשיר:", Location = new Point(6, 104), Size = new Size(110, 24) });
-            cmbAbi = new ComboBox { Location = new Point(120, 100), Size = new Size(150, 28), DropDownStyle = ComboBoxStyle.DropDownList };
-            cmbAbi.Items.AddRange(new object[] { "auto", "arm64-v8a", "armeabi-v7a", "x86_64", "x86" });
-            cmbAbi.SelectedIndex = 0;
-            cbKeepVerity = new CheckBox { Text = "השאר verity (KEEPVERITY)", Location = new Point(6, 136), Size = new Size(370, 24) };
-            cbKeepEnc = new CheckBox { Text = "השאר הצפנה כפויה (KEEPFORCEENCRYPT)", Location = new Point(6, 162), Size = new Size(420, 24) };
-            cbRecovery = new CheckBox { Text = "מצב recovery (RECOVERYMODE)", Location = new Point(6, 188), Size = new Size(370, 24) };
-            cbPatchVbFlag = new CheckBox { Text = "כבה אימות ב-vbmeta של ה-boot (PATCHVBMETAFLAG)", Location = new Point(6, 214), Size = new Size(430, 24) };
-            lblMagisk = new Label { Location = new Point(6, 244), Size = new Size(500, 70), ForeColor = Color.DimGray };
-            var btnApk = new Button { Text = "בחר Magisk.apk אחר...", Location = new Point(6, 320), Size = new Size(190, 30) };
-            btnApk.Click += (s, e) => PickMagiskApk();
-            var btnVer = new Button { Text = "הורד גרסה (למשל 26)...", Location = new Point(202, 320), Size = new Size(190, 30) };
-            btnVer.Click += (s, e) => DownloadMagiskVersion();
-            t.Controls.AddRange(new Control[] { cmbAbi, cbKeepVerity, cbKeepEnc, cbRecovery, cbPatchVbFlag, lblMagisk, btnApk, btnVer });
-            btnRunMagisk = RunButton(t, "בצע Root", (s, e) => RunToolOnTab(EditAction.Magisk, cmbFileMagisk, "בחר boot.img או init_boot.img"));
-            UpdateMagiskLabel();
-            return t;
+            if (goalMagisk == null) return;
+            Action<GoalRow, ComboBox, string, bool> upd = (row, cmb, what, defOn) =>
+            {
+                bool has = cmb.Items.OfType<ProjectFile>().Any();
+                var pf = cmb.SelectedItem as ProjectFile;
+                bool had = row.Tag is bool && (bool)row.Tag;
+                row.Switch.Enabled = has;
+                if (!has) row.Switch.Checked = false;
+                else if (!had) row.Switch.Checked = defOn;
+                row.Tag = has;
+                row.Desc.Text = has ? what + ". קובץ: " + (pf != null ? pf.Name : "") : what + ". אין קובץ מתאים בפרויקט.";
+                row.Desc.ForeColor = has ? Color.FromArgb(90, 99, 110) : Color.Firebrick;
+            };
+            upd(goalMagisk, cmbFileMagisk, "מקבל הרשאות Root", true);
+            upd(goalAvb, cmbFileAvb, "מכבה אימות verity ו-verification", true);
+            upd(goalLk, cmbFileLk, "מסיר השהיה והודעת אזהרה באתחול", true);
+            upd(goalRo2rw, cmbFileRo2rw, "הופך את מחיצות super לקריאה וכתיבה", false);
+            UpdateGoalSummary();
         }
 
-        TabPage BuildAvbTab()
+        int GoalCount() { return new[] { goalMagisk, goalAvb, goalLk, goalRo2rw }.Count(g => g != null && g.Switch.Enabled && g.Switch.Checked); }
+
+        void UpdateGoalSummary()
         {
-            var t = ToolPage("AVB (vbmeta)");
-            t.Controls.Add(Head("ביטול AVB"));
-            t.Controls.Add(Sub("מכבה את האימות ב-vbmeta. \"הכול\" שווה ערך ל-fastboot --disable-verity --disable-verification. מבוסס על AVB-Disabler, hex-replacer ו-hovatek.", 34));
-            cmbFileAvb = FileRow(t, 70, "קובץ vbmeta:");
-            t.Controls.Add(new Label { Text = "מה לכבות:", Location = new Point(6, 116), Size = new Size(110, 24) });
-            cmbVbMode = new ComboBox { Location = new Point(120, 112), Size = new Size(260, 28), DropDownStyle = ComboBoxStyle.DropDownList };
-            cmbVbMode.Items.AddRange(new object[] { "הכול (verity + verification)", "רק verity (hashtree)", "רק verification (חתימות)" });
-            cmbVbMode.SelectedIndex = 0;
-            t.Controls.Add(cmbVbMode);
-            btnRunAvb = RunButton(t, "בצע ביטול AVB", (s, e) => RunToolOnTab(EditAction.Vbmeta, cmbFileAvb, "בחר vbmeta.img"));
-            return t;
+            if (lblGoalSummary == null) return;
+            int n = GoalCount();
+            lblGoalSummary.Text = n == 0 ? "לא נבחרו עריכות." : (n == 1 ? "עריכה אחת נבחרה." : n + " עריכות נבחרו.");
+            btnRunGoals.Enabled = n > 0 && !(btnCancel != null && btnCancel.Enabled);
         }
 
-        TabPage BuildLkTab()
+        void RunGoals()
         {
-            var t = ToolPage("LK / Orange State");
-            t.Controls.Add(Head("LK - הסרת Orange State"));
-            t.Controls.Add(Sub("מסיר את ההשהיה ואת טקסט האזהרה בהפעלה, וכולל תיקוני dm_verity / fastboot-unlock / red_state (מקור lkpatcher) - מה שגורם למכשיר לדרוש לחיצה כדי לדלוק.", 34));
-            cmbFileLk = FileRow(t, 76, "קובץ lk:");
-            cbLkDelay = new CheckBox { Text = "בטל את ההשהיה של 5 שניות (Orange State)", Location = new Point(6, 120), Size = new Size(400, 24), Checked = true };
-            cbLkText = new CheckBox { Text = "מחק את טקסט האזהרה מהמסך", Location = new Point(6, 148), Size = new Size(400, 24), Checked = true };
-            t.Controls.Add(new Label { Text = "גרסת אנדרואיד:", Location = new Point(6, 184), Size = new Size(120, 24) });
-            cmbLkAndroid = new ComboBox { Location = new Point(130, 180), Size = new Size(200, 28), DropDownStyle = ComboBoxStyle.DropDownList };
-            cmbLkAndroid.Items.AddRange(new object[] { "זיהוי אוטומטי", "אנדרואיד 9 ומטה", "אנדרואיד 10 ומעלה" });
-            cmbLkAndroid.SelectedIndex = 0;
-            t.Controls.AddRange(new Control[] { cbLkDelay, cbLkText, cmbLkAndroid });
-            btnRunLk = RunButton(t, "בצע LK", (s, e) => RunToolOnTab(EditAction.Lk, cmbFileLk, "בחר lk.img"));
-            return t;
+            if (project == null) { Msg(this, "צור או בחר פרויקט קודם."); return; }
+            var pairs = new[] { Tuple.Create(goalMagisk, cmbFileMagisk), Tuple.Create(goalAvb, cmbFileAvb), Tuple.Create(goalLk, cmbFileLk), Tuple.Create(goalRo2rw, cmbFileRo2rw) };
+            var sel = new List<ProjectFile>();
+            foreach (var f in files) f.Selected = false;
+            foreach (var pr in pairs)
+            {
+                var pf = pr.Item2.SelectedItem as ProjectFile;
+                if (pr.Item1.Switch.Enabled && pr.Item1.Switch.Checked && pf != null && !sel.Contains(pf)) { pf.Selected = true; sel.Add(pf); }
+            }
+            if (sel.Count == 0) { Msg(this, "לא נבחרה אף עריכה."); return; }
+            int sum = (int)(nS.Value + nV.Value + nP.Value + nSE.Value + nOT.Value);
+            if (goalRo2rw.Switch.Checked && rbMax.Checked && sum > 100) { Msg(this, "סכום האחוזים ב-RO2RW גדול מ-100%.", MessageBoxIcon.Warning); goalRo2rw.SetExpanded(true); return; }
+            RunEditList(project, sel);
         }
 
         TabPage BuildDumpTab()
         {
-            var t = ToolPage("⬇ שאיבה");
+            var t = ToolPage("שאיבה");
             t.Controls.Add(Head("שאיבת רום מהמכשיר"));
             t.Controls.Add(Sub("שואב את כל המחיצות מהמכשיר (MediaTek) לתוך הפרויקט, בשמות המחיצות, ויוצר scatter. שאיבה היא קריאה בלבד - לא משנה דבר במכשיר.", 34));
             t.Controls.Add(new Label { Text = "מנוע:", Location = new Point(6, 76), Size = new Size(60, 24) });
@@ -320,22 +446,22 @@ namespace Ro2rwPc
             btnDump = new Button { Visible = false };
             btnDump.Click += (s, e) => DumpRom();
             t.Controls.AddRange(new Control[] { cmbEngineDump, cbSkipUserdata, btnDriver, btnDump });
-            btnDumpGo = RunButton(t, "⬇ שאב רום מהמכשיר", (s, e) => DumpRom());
+            btnDumpGo = RunButton(t, "שאב רום מהמכשיר", (s, e) => DumpRom());
             btnDumpGo.BackColor = Color.FromArgb(21, 101, 192);
             return t;
         }
 
         TabPage BuildFlashTab()
         {
-            var t = ToolPage("⬆ צריבה");
+            var t = ToolPage("צריבה");
             t.Controls.Add(Head("צריבה חזרה למכשיר"));
-            t.Controls.Add(Sub("צורב את הקבצים הערוכים חזרה למכשיר. ⚠️ גבה את המכשיר לפני הצריבה. שמות המחיצות נבדקים מול gpt.bin; מחיצות רגישות חסומות.", 34));
+            t.Controls.Add(Sub("צורב את הקבצים הערוכים חזרה למכשיר. גבה את המכשיר לפני הצריבה. שמות המחיצות נבדקים מול gpt.bin; מחיצות רגישות חסומות.", 34));
             t.Controls.Add(new Label { Text = "מנוע:", Location = new Point(6, 80), Size = new Size(60, 24) });
             cmbEngineFlash = new ComboBox { Location = new Point(70, 76), Size = new Size(360, 28), DropDownStyle = ComboBoxStyle.DropDownList };
             cmbEngineFlash.Items.AddRange(EngineItems());
             cmbEngineFlash.SelectedIndex = 0;
             cmbEngineFlash.SelectedIndexChanged += (s, e) => { if (!engineUiUpdating) SetEngineByIndex(cmbEngineFlash.SelectedIndex); };
-            btnFlashEdited = new Button { Text = "⬆ צרוב את תיקיית \"ערוך\"", Location = new Point(6, 120), Size = new Size(260, 42), Font = fBold, BackColor = Color.FromArgb(198, 40, 40), ForeColor = Color.White, FlatStyle = FlatStyle.Flat };
+            btnFlashEdited = new Button { Text = "צרוב את תיקיית \"ערוך\"", Location = new Point(6, 120), Size = new Size(260, 42), Font = fBold, BackColor = Color.FromArgb(198, 40, 40), ForeColor = Color.White, FlatStyle = FlatStyle.Flat };
             btnFlashEdited.Click += (s, e) => FlashBack(null, true, null);
             btnFlashPick = new Button { Text = "צרוב קבצים נבחרים...", Location = new Point(276, 120), Size = new Size(200, 42) };
             btnFlashPick.Click += (s, e) => FlashPickFiles();
@@ -349,7 +475,7 @@ namespace Ro2rwPc
 
         TabPage BuildSpTab()
         {
-            var t = ToolPage("📲 SP Flash Tool");
+            var t = ToolPage("SP Flash Tool");
             t.Controls.Add(Head("SP Flash Tool"));
             t.Controls.Add(Sub("SP Flash Tool היא תוכנה סגורה (אי אפשר לארוז אותה). התקן אותה פעם אחת לתוך התוכנה, ואז אפשר לבחור אותה כמנוע בלשוניות שאיבה/צריבה, או להשתמש בה כאן ישירות.", 34));
             var btnInstall = new Button { Text = "התקן SP Flash Tool לתוך התוכנה...", Location = new Point(6, 86), Size = new Size(300, 34), Font = fBold };
@@ -368,7 +494,7 @@ namespace Ro2rwPc
 
         TabPage BuildToolsTab()
         {
-            var t = ToolPage("🔧 כלים");
+            var t = ToolPage("כלים");
             t.Controls.Add(Head("כלים נוספים"));
             t.Controls.Add(Sub("עורך HEX, יצירת scatter, תכנון super ומידע על קבצים.", 34));
             var btnHex = new Button { Text = "עורך HEX - חיפוש והחלפה...", Location = new Point(6, 76), Size = new Size(280, 34) };
@@ -497,10 +623,11 @@ namespace Ro2rwPc
         void SetBusy(bool busy)
         {
             if (InvokeRequired) { BeginInvoke(new Action(() => SetBusy(busy))); return; }
-            foreach (var b in new Control[] { btnRun, btnNewProj, btnAddFiles, btnRefresh, cmbProject, lvFiles, btnDump, btnDriver, btnWizard, btnFlash, btnSp, btnDumpGo, btnFlashEdited, btnFlashPick, btnRunRo2rw, btnRunMagisk, btnRunAvb, btnRunLk, cmbEngineDump, cmbEngineFlash, cmbFileRo2rw, cmbFileMagisk, cmbFileAvb, cmbFileLk })
+            foreach (var b in new Control[] { btnRun, btnNewProj, btnAddFiles, btnRefresh, cmbProject, lvFiles, btnDump, btnDriver, btnWizard, btnFlash, btnSp, btnDumpGo, btnFlashEdited, btnFlashPick, btnRunGoals, cmbEngineDump, cmbEngineFlash, cmbFileRo2rw, cmbFileMagisk, cmbFileAvb, cmbFileLk })
                 if (b != null) b.Enabled = !busy;
             if (menu != null) foreach (ToolStripMenuItem m in menu.Items) if (m.Tag as string != "always") m.Enabled = !busy;
             btnCancel.Enabled = busy;
+            UpdateGoalSummary();
             UseWaitCursor = busy;
         }
 
@@ -580,6 +707,7 @@ namespace Ro2rwPc
             Fill(cmbFileMagisk, EditAction.Magisk);
             Fill(cmbFileAvb, EditAction.Vbmeta);
             Fill(cmbFileLk, EditAction.Lk);
+            UpdateGoalRows();
         }
 
         void Fill(ComboBox cmb, EditAction action)
@@ -1320,10 +1448,6 @@ namespace Ro2rwPc
             Action<Control, string> t = (c, text) => { if (c == null) return; tips.SetToolTip(c, text); c.AccessibleDescription = text; };
             t(btnWizard, "אשף שלב אחרי שלב: פרויקט, מקור, עריכות, גדלים וצריבה (Ctrl+W)");
             t(btnRun, "מבצע את כל הקבצים המסומנים ברשימה. הפלט נשמר בתיקייה \"ערוך\" (Ctrl+E)");
-            t(btnRunRo2rw, "ממיר את קובץ ה-super הנבחר ל-ext4 לקריאה-וכתיבה");
-            t(btnRunMagisk, "עורך את קובץ ה-boot/init_boot הנבחר עם Magisk");
-            t(btnRunAvb, "מכבה את האימות ב-vbmeta הנבחר");
-            t(btnRunLk, "מסיר Orange State ותיקוני bootloader מקובץ ה-lk הנבחר");
             t(btnDumpGo, "שואב את כל המחיצות מהמכשיר לתוך הפרויקט (MediaTek, מצב BROM)");
             t(btnFlashEdited, "צורב את תיקיית \"ערוך\" חזרה למכשיר לפי המנוע הנבחר (Ctrl+F)");
             t(btnFlashPick, "צורב קבצים ספציפיים שתבחר");
@@ -1510,7 +1634,7 @@ namespace Ro2rwPc
                 "SP Flash Tool תופעל אוטומטית ותצרוב (Download Only, בלי format):\n" +
                 string.Join("\n", roms.Select(x => "   • " + x.Name)) + "\n\n" +
                 "DA: " + Path.GetFileName(da) + "\n" +
-                "⚠️ ניסיוני, ותלוי בגרסת SP שלך. גבה את המכשיר. מומלץ לנסות קודם עם vbmeta בלבד.\n\n" +
+                "אזהרה: ניסיוני, ותלוי בגרסת SP שלך. גבה את המכשיר. מומלץ לנסות קודם עם vbmeta בלבד.\n\n" +
                 "להמשיך?", MessageBoxIcon.Warning)) return;
             string com = Prompt("מספר COM של המכשיר (אופציונלי - השאר ריק לזיהוי אוטומטי, למשל COM40):", "SP Flash Tool");
             if (com != null) com = com.Trim();

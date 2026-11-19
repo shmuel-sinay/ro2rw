@@ -329,7 +329,7 @@ namespace Ro2rwPc
             lblTitle.Text = titles[i];
             lblStep.Text = "שלב " + (i + 1) + " מתוך " + pages.Count;
             btnBack.Enabled = i > 0;
-            btnNext.Text = i == pages.Count - 1 ? "התחל ✓" : "הבא ›";
+            btnNext.Text = i == pages.Count - 1 ? "התחל" : "הבא ›";
             if (i == pages.Count - 1) { Collect(); lblSummary.Text = Summary(); }
         }
 

@@ -1,0 +1,312 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RO2RW PC - תכנון ממשק מאפס</title>
+<style>
+:root { --ink:#1d2330; --mute:#5b6577; --line:#d9dee7; --bg:#f4f5f7; --paper:#fff; --acc:#0b5cad; }
+* { box-sizing: border-box; }
+body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.65 "Segoe UI", Arial, sans-serif; }
+.wrap { max-width:1100px; margin:0 auto; padding:32px 20px 80px; }
+h1 { font-size:30px; margin:0 0 6px; }
+h2 { font-size:22px; margin:48px 0 10px; padding-top:18px; border-top:2px solid var(--ink); }
+h3 { font-size:17px; margin:22px 0 6px; }
+p { margin:6px 0; max-width:75ch; }
+.sub { color:var(--mute); }
+table { border-collapse:collapse; width:100%; background:var(--paper); margin:10px 0; font-size:15px; }
+th, td { text-align:right; vertical-align:top; padding:8px 12px; border-bottom:1px solid var(--line); }
+th { background:#e9ecf1; font-weight:600; width:170px; }
+ol.gaps { padding-inline-start:22px; }
+ol.gaps li { margin:8px 0; max-width:80ch; }
+.tag { display:inline-block; font-size:12px; padding:1px 8px; border:1px solid var(--line); background:var(--paper); margin-inline-start:6px; color:var(--mute); }
+.tag.hi { border-color:#b3261e; color:#b3261e; }
+.tag.mid { border-color:#9a6b00; color:#9a6b00; }
+.flow { display:flex; flex-wrap:wrap; gap:0; margin:14px 0; }
+.flow div { background:var(--paper); border:1px solid var(--line); padding:10px 14px; margin-inline-end:-1px; min-width:140px; }
+.flow b { display:block; }
+.flow span { font-size:13px; color:var(--mute); }
+code { background:#e9ecf1; padding:0 5px; font-family:Consolas, monospace; font-size:14px; }
+.pick { background:var(--paper); border:1px solid var(--line); padding:12px 16px; margin:14px 0; }
+
+/* ======== mockups ======== */
+.frame-title { margin:34px 0 8px; font-weight:600; }
+.frame-title small { font-weight:400; color:var(--mute); margin-inline-start:8px; }
+.mock { border:1px solid #9aa3b2; overflow:hidden; background:#fff; }
+.app { display:grid; min-height:560px; }
+.app header.top { grid-area:top; display:flex; align-items:center; gap:14px; padding:10px 16px; }
+.app nav.steps { grid-area:steps; display:flex; }
+.app main { grid-area:main; padding:22px 28px; }
+.app footer.action { grid-area:action; display:flex; align-items:center; gap:12px; padding:12px 28px; }
+.app section.log { grid-area:log; display:none; }
+.app .sp { flex:1; }
+svg.i { width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; flex:none; }
+.brand { font-weight:700; letter-spacing:.3px; }
+.proj { font-size:14px; padding:5px 10px; border:1px solid var(--bd); background:var(--fieldbg); display:flex; gap:8px; align-items:center; }
+.chip { font-size:13px; padding:3px 10px; display:flex; align-items:center; gap:7px; border:1px solid var(--bd); }
+.dot { width:8px; height:8px; border-radius:50%; background:var(--ok); }
+.ibtn { background:none; border:0; color:inherit; padding:4px; cursor:pointer; opacity:.8; }
+.steps a { display:flex; gap:10px; align-items:center; color:inherit; text-decoration:none; }
+.steps a .n { font-weight:700; }
+.steps a small { display:block; font-size:12px; opacity:.7; }
+.steps a.done .st { color:var(--ok); }
+h2.t { margin:0; padding:0; border:0; font-size:22px; }
+.lead { color:var(--mute2); margin:4px 0 16px; }
+ul.goals { list-style:none; margin:0; padding:0; }
+ul.goals > li { padding:12px 0; border-top:1px solid var(--bd); }
+ul.goals .row { display:flex; align-items:center; gap:14px; }
+ul.goals .name { font-weight:600; }
+ul.goals .desc { font-size:13.5px; color:var(--mute2); }
+ul.goals .file { font-family:Consolas, monospace; font-size:13px; color:var(--mute2); }
+.sw { position:relative; width:38px; height:20px; flex:none; }
+.sw input { opacity:0; position:absolute; inset:0; margin:0; cursor:pointer; }
+.sw i { position:absolute; inset:0; background:var(--off); transition:.15s; }
+.sw i::after { content:""; position:absolute; top:2px; inset-inline-start:2px; width:16px; height:16px; background:#fff; transition:.15s; }
+.sw input:checked + i { background:var(--acc2); }
+.sw input:checked + i::after { inset-inline-start:20px; }
+details.opt { margin:8px 0 0; margin-inline-start:52px; }
+details.opt summary { font-size:13.5px; color:var(--acc2); cursor:pointer; }
+.bars { margin-top:10px; display:grid; gap:7px; max-width:520px; }
+.bar { display:grid; grid-template-columns:78px 1fr 84px; gap:10px; align-items:center; font-size:13px; }
+.bar .tr { height:12px; background:var(--off); position:relative; }
+.bar .tr b { position:absolute; inset-block:0; inset-inline-start:0; background:var(--bar); }
+.bar .tr em { position:absolute; inset-block:0; background:var(--acc2); opacity:.9; }
+.btn { font:inherit; padding:9px 20px; border:1px solid var(--bd); background:var(--fieldbg); color:inherit; cursor:pointer; }
+.btn.main { background:var(--acc2); border-color:var(--acc2); color:#fff; font-weight:600; padding:10px 28px; }
+.sum { font-size:14px; color:var(--mute2); }
+.logbar { font-family:Consolas, monospace; font-size:12.5px; }
+
+/* ---- A: workbench ---- */
+.A { --bd:#cfd5df; --fieldbg:#fff; --ok:#1b7f3b; --off:#c4cad4; --acc2:#0b5cad; --mute2:#5b6577; --bar:#9fb3cf; color:#1d2330; font-family:"Segoe UI", Arial, sans-serif; }
+.A .app { grid-template-columns:210px 1fr; grid-template-rows:auto 1fr auto; grid-template-areas:"top top" "steps main" "steps action"; }
+.A header.top { background:#0b5cad; color:#fff; --bd:#5d93cc; --fieldbg:#1a6dc0; --ok:#7be09c; }
+.A nav.steps { flex-direction:column; background:#eef1f6; border-inline-end:1px solid var(--bd); padding:10px 0; }
+.A .steps a { padding:11px 18px; border-inline-start:3px solid transparent; }
+.A .steps a.on { background:#fff; border-inline-start-color:#0b5cad; font-weight:600; }
+.A .steps .st { font-size:12px; }
+.A footer.action { border-top:1px solid var(--bd); background:#f7f8fa; }
+.A .steps svg.i { color:#0b5cad; }
+
+/* ---- B: guided ---- */
+.B { --bd:#e1d9cc; --fieldbg:#fff; --ok:#2e7d32; --off:#d8d0c2; --acc2:#b4410c; --mute2:#6b6256; --bar:#cdbfa8; background:#fbf8f3; color:#2b2620; font-family:"Segoe UI", Arial, sans-serif; }
+.B .app { grid-template-columns:1fr; grid-template-rows:auto auto 1fr auto; grid-template-areas:"top" "steps" "main" "action"; }
+.B header.top { border-bottom:1px solid var(--bd); }
+.B nav.steps { justify-content:center; padding:20px 12px 8px; gap:0; }
+.B .steps a { flex-direction:column; text-align:center; gap:6px; width:150px; position:relative; opacity:.55; }
+.B .steps a::after { content:""; position:absolute; top:17px; inset-inline-start:-50%; width:100%; height:2px; background:var(--bd); z-index:0; }
+.B .steps a:last-child::after { display:none; }
+.B .steps a .ic { width:36px; height:36px; border-radius:50%; border:2px solid var(--bd); background:#fbf8f3; display:grid; place-items:center; position:relative; z-index:1; }
+.B .steps a.done, .B .steps a.on { opacity:1; }
+.B .steps a.done .ic { background:var(--ok); border-color:var(--ok); color:#fff; }
+.B .steps a.on .ic { border-color:var(--acc2); color:var(--acc2); }
+.B .steps a .n { display:none; }
+.B main { width:100%; max-width:760px; margin:0 auto; padding:18px 20px; }
+.B h2.t { font-size:28px; }
+.B .lead { font-size:16px; }
+.B ul.goals > li { padding:16px 0; border-top:1px solid var(--bd); }
+.B ul.goals .name { font-size:17px; }
+.B footer.action { max-width:760px; width:100%; margin:0 auto; border-top:1px solid var(--bd); }
+.B .btn.main { background:var(--acc2); padding:13px 40px; font-size:17px; }
+
+/* ---- C: console ---- */
+.C { --bd:#2f3a44; --fieldbg:#1c242c; --ok:#3ddc84; --off:#37434e; --acc2:#3ddc84; --mute2:#8fa1b0; --bar:#3a5266; background:#12181e; color:#dde6ee; font-family:"Segoe UI", Arial, sans-serif; }
+.C .app { grid-template-columns:96px 1fr; grid-template-rows:auto 1fr auto 150px; grid-template-areas:"top top" "steps main" "steps action" "log log"; }
+.C header.top { background:#0c1116; border-bottom:1px solid var(--bd); }
+.C nav.steps { flex-direction:column; background:#0f151b; border-inline-end:1px solid var(--bd); padding-top:8px; }
+.C .steps a { flex-direction:column; gap:3px; padding:12px 4px; font-size:12px; text-align:center; border-inline-start:3px solid transparent; opacity:.7; }
+.C .steps a small, .C .steps a .n { display:none; }
+.C .steps a.on { opacity:1; border-inline-start-color:var(--acc2); background:#161e26; }
+.C .steps a.done { opacity:.9; }
+.C .btn.main { color:#06210f; }
+.C .sw input:checked + i { background:var(--acc2); }
+.C footer.action { border-top:1px solid var(--bd); background:#0f151b; }
+.C section.log { display:block; background:#0a0e12; border-top:1px solid var(--bd); padding:8px 14px; color:#9db0bf; overflow:hidden; }
+.C section.log div { white-space:nowrap; }
+.C section.log .ok { color:var(--ok); }
+.C section.log .hd { color:#dde6ee; margin-bottom:4px; display:flex; gap:10px; }
+.logbar-A, .logbar-B { display:none; }
+.A .logbar-A, .B .logbar-B { display:flex; }
+.logline { font-family:Consolas, monospace; font-size:12px; padding:5px 28px; color:#5b6577; border-top:1px solid #e6e9ef; gap:8px; align-items:center; }
+.B .logline { max-width:760px; margin:0 auto; width:100%; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>RO2RW PC: תכנון הממשק מחדש, מאפס</h1>
+<p class="sub">מסמך עבודה. חלק 1: כל מה שהתוכנה יודעת לעשות. חלק 2: מה חסר ומה כדאי להוסיף. חלק 3: איך בונים סביב זה ממשק ברור. חלק 4: שלושה דגמים של אותו מסך, לבחירה.</p>
+
+<h2>1. מה התוכנה עושה היום (רשימה מלאה, בלי קשר למבנה הנוכחי)</h2>
+<table>
+<tr><th>פרויקטים</th><td>פרויקט לכל מכשיר (תיקייה). יצירה, בחירה, פתיחת התיקייה, שינוי מיקום, זיהוי אוטומטי של סוג כל קובץ, שמירת המצב האחרון.</td></tr>
+<tr><th>קבצים</th><td>הוספה ידנית או בגרירה. זיהוי: super, boot, init_boot, vbmeta, lk. רשימה עם סימון, "נערך כבר", פעולה ימנית לכל קובץ, מידע על קובץ (boot: ABI וגרסת Magisk, vbmeta: מצב AVB, super: מחיצות וסוג מערכת קבצים).</td></tr>
+<tr><th>עריכת super (RO2RW)</th><td>המרת EROFS/ext4 לקריאה בלבד ל-ext4 לקריאה וכתיבה. מצב אחוזים או גודל קבוע, sparse, שורות fstab ל-vendor, הסרת WiFi (למכשיר מסונן), תכנון מפורט לפי מחיצה עם מד מקום פנוי. קלט raw/sparse/מפוצל.</td></tr>
+<tr><th>Root (Magisk)</th><td>עריכת boot/init_boot על המחשב. ABI אוטומטי או ידני, KEEPVERITY, KEEPFORCEENCRYPT, RECOVERYMODE, PATCHVBMETAFLAG, בחירת Magisk.apk אחר, הורדת גרסה ספציפית.</td></tr>
+<tr><th>AVB</th><td>כיבוי verity ו/או verification ב-vbmeta (שלושה מצבים).</td></tr>
+<tr><th>LK / Orange State</th><td>ביטול השהיה של 5 שניות, מחיקת טקסט אזהרה, תיקוני dm_verity / fastboot-unlock / red_state, בחירת גרסת אנדרואיד.</td></tr>
+<tr><th>שאיבה מהמכשיר</th><td>שאיבת כל המחיצות לפרויקט, עם gpt.bin ו-scatter. אפשרות "בלי userdata". מנועים: mtkclient (USB או COM), מנוע מהיר (USB או COM), SP Flash Tool ReadBack (חדש).</td></tr>
+<tr><th>צריבה</th><td>צריבה של תיקיית "ערוך" או קבצים נבחרים. בדיקת שמות מול gpt, בדיקת גודל מול המחיצה, המרת sparse, חסימת מחיצות רגישות (preloader, nvram, proinfo, seccfg), חלון אישור, אתחול בסוף.</td></tr>
+<tr><th>SP Flash Tool</th><td>התקנה לתוך התוכנה, הורדה מהאתר, צריבה אוטומטית (Download Only), פתיחה ידנית עם scatter, מדריך צריבה וגיבוי.</td></tr>
+<tr><th>דרייברים והתחברות</th><td>התקנת UsbDk, הזנת מספר COM, בחירת מנוע לפי הדרייבר שקיים.</td></tr>
+<tr><th>כלים נוספים</th><td>עורך HEX (חיפוש והחלפה עם <code>??</code>, תבניות), יצירת scatter לתיקיית "ערוך", תכנון super, מידע על קובץ.</td></tr>
+<tr><th>דרכי עבודה</th><td>אשף (שלב אחרי שלב), פרויקט ידני, כלים בודדים על קובץ אחד בלי פרויקט.</td></tr>
+<tr><th>חוויה</th><td>עברית RTL, זום (Ctrl +/-), יומן, פס התקדמות, ביטול/Esc, טולטיפים, עזרה (F1), שמירת הגדרות ב-ini, התקנה ל-C:\RO2RW.</td></tr>
+</table>
+
+<h2>2. מה חסר, ומה כדאי להוסיף</h2>
+<p class="sub">מסודר לפי כאב אמיתי בעבודה עם מכשירי MediaTek, לא לפי "מגניב".</p>
+<ol class="gaps">
+<li><b>גיבוי חובה לפני כל צריבה.</b> התוכנה צריבה, אבל לא יודעת אם יש גיבוי תקין של המכשיר הזה. מציעים: מצב "גיבוי" לכל פרויקט (מלא / חלקי / אין), חישוב SHA-256 לכל קובץ שנשאב, וצריבה נעולה עד שיש גיבוי של המחיצות שעומדים להחליף. <span class="tag hi">חשיבות גבוהה</span></li>
+<li><b>מסך חיבור למכשיר, תמיד גלוי.</b> היום המשתמש לומד מכישלון שחסר דרייבר או שהמכשיר לא ב-BROM. מציעים: מצב המכשיר (לא מחובר / BROM / Preloader), יציאת COM שזוהתה, מצב דרייברים (UsbDk, VCOM), והמלצת מנוע אוטומטית ("אין UsbDk, מומלץ מנוע COM"). המנוע יוצא מהמסכים ועובר להגדרות מתקדמות. <span class="tag hi">חשיבות גבוהה</span></li>
+<li><b>בדיקת מוכנות לפני צריבה.</b> מסך סיכום אחד: אילו מחיצות ייצרבו, גודל מול המחיצה, vbmeta תואם, מחיצות חסומות, יש גיבוי, הסוללה. כפתור הצריבה פעיל רק כשהכול ירוק. <span class="tag hi">חשיבות גבוהה</span></li>
+<li><b>מתכונים במקום אשף.</b> היום האשף הוא כלי נפרד. במקום זה: "מה אתה רוצה לעשות?" עם מתכונים מוכנים (Root מלא, הסרת Orange State, הגדלת מחיצות, גיבוי בלבד). כל מתכון בוחר לבד אילו שלבים נדרשים, וניתן לשמור מתכון משלך. <span class="tag mid">בינונית</span></li>
+<li><b>לוח מצב לפרויקט.</b> דגם, מעבד, סוג אחסון, גרסת אנדרואיד, חריצי A/B, האם super דינמי, ושרשרת: נשאב / נערך / נצרב, עם תאריכים. מי שחוזר לפרויקט אחרי שבוע מבין איפה עצר. <span class="tag mid">בינונית</span></li>
+<li><b>דפדפן קבצים בתוך super.</b> לצפות, לחלץ, להחליף ולהוסיף קובץ בתוך system / vendor / product בלי להמיר הכול. כולל עריכת build.prop. הליבה כבר קוראת את העץ (<code>ReadTree</code>), חסר רק ממשק. <span class="tag mid">בינונית</span></li>
+<li><b>השוואה לפני ואחרי.</b> סיכום אחרי עריכה: מה השתנה בכל קובץ (גדלים, דגלים, מחיצות שהומרו), עם אפשרות "שחזר את המקור". <span class="tag mid">בינונית</span></li>
+<li><b>בדיקת שטח דיסק והערכת זמן</b> לפני שאיבה (עשרות GB), עם אזהרה אם אין מקום. <span class="tag mid">בינונית</span></li>
+<li><b>שחזור ממצב תקול.</b> מסלול ייעודי: "המכשיר לא נדלק". בוחר גיבוי, צורב רק את המחיצות הנחוצות, ומסביר מה לחבר ואיך. <span class="tag mid">בינונית</span></li>
+<li><b>חבילת תמיכה.</b> כפתור אחד שאורז יומנים, גרסאות, מנוע, דגם ו-scatter לקובץ zip לשליחה בדיווח תקלה. <span class="tag">נמוכה</span></li>
+<li><b>עדכון אוטומטי.</b> בדיקת גרסה חדשה ב-Releases ועדכון במקום. <span class="tag">נמוכה</span></li>
+<li><b>מצב מתקדם.</b> מתג אחד בהגדרות. כבוי: רק מה שצריך. דלוק: כל הדגלים (KEEPVERITY, red_state, ABI ידני וכו'). היום הכול מוצג תמיד. <span class="tag hi">חשיבות גבוהה לבהירות</span></li>
+</ol>
+
+<h2>3. איך בונים את זה: עקרונות</h2>
+<h3>א. מארגנים לפי מטרה ולפי מסלול, לא לפי כלי</h3>
+<p>משתמש לא חושב "אני רוצה את כלי vbmeta". הוא חושב "אני רוצה Root". לכן הכלים (Magisk, AVB, LK, RO2RW) הופכים ל<b>מטרות</b> במסך אחד של עריכה, ולא ל-4 מסכים נפרדים. המסלול עצמו הוא ציר קבוע של חמישה שלבים:</p>
+<div class="flow">
+<div><b>1. חיבור</b><span>מכשיר, דרייבר, מנוע</span></div>
+<div><b>2. גיבוי</b><span>שאיבה ואימות</span></div>
+<div><b>3. עריכה</b><span>מטרות: Root, AVB, LK, מקום</span></div>
+<div><b>4. בדיקה</b><span>סיכום ומוכנות</span></div>
+<div><b>5. צריבה</b><span>ואימות אחרי</span></div>
+</div>
+<h3>ב. מה תמיד על המסך</h3>
+<p>כותרת: שם הפרויקט, <b>שבב סטטוס מכשיר</b> (מחובר/לא), הגדרות ועזרה. רצועת השלבים עם סימון "הושלם". פעולה ראשית אחת בתחתית. יומן נשאר מתקפל בתחתית ולא בחלון נפרד.</p>
+<h3>ג. כל מסך עונה על שלוש שאלות</h3>
+<p>איפה אני (שלב), מה אני עושה (כותרת ושורת הסבר אחת), מה הצעד הבא (כפתור ראשי אחד, ברור, בתחתית). אפשרויות מתקדמות מקופלות מתחת לכל מטרה ("אפשרויות"), ורק במצב מתקדם נראים דגלים טכניים.</p>
+<h3>ד. ברירות מחדל בטוחות והמלצות</h3>
+<p>התוכנה בוחרת מנוע, חריץ A, vbmeta ראשי, init_boot במקום boot, ומציעה מתכון. המשתמש משנה רק כשהוא רוצה. כל פעולה בלתי הפיכה (צריבה) עוברת בדיקת מוכנות וחלון אישור שמפרט מה ייצרב.</p>
+<h3>ה. "כלים בודדים" נשארים, אבל כבית נפרד</h3>
+<p>מי שרוצה לערוך קובץ אחד בלי פרויקט מקבל מסך פתיחה אחד: "גרור קובץ לכאן". התוכנה מזהה את סוג הקובץ ומציגה את המטרה המתאימה. אותה מערכת, בלי תפריט נפרד.</p>
+<h3>מפת מסכים</h3>
+<table>
+<tr><th>בית</th><td>פרויקטים אחרונים, "פרויקט חדש", "גרור קובץ לעריכה מהירה", מתכונים.</td></tr>
+<tr><th>1. חיבור</th><td>מצב מכשיר, COM, דרייברים (התקן/בדוק), המלצת מנוע, הוראות כניסה ל-BROM בשרטוט.</td></tr>
+<tr><th>2. גיבוי</th><td>שאיבה (כל המחיצות או נבחרות, בלי userdata), התקדמות לפי מחיצה, אימות SHA-256, מצב הגיבוי של הפרויקט.</td></tr>
+<tr><th>3. עריכה</th><td>רשימת מטרות עם מתג: Root, כיבוי AVB, הסרת Orange State, הגדלת מחיצות, הסרת WiFi. לכל מטרה: איזה קובץ, כמה זה ישנה, "אפשרויות". מד מקום פנוי.</td></tr>
+<tr><th>4. בדיקה</th><td>טבלת "לפני / אחרי", בדיקות מוכנות (ירוק/אדום), יצירת scatter אוטומטית.</td></tr>
+<tr><th>5. צריבה</th><td>מנוע (מומלץ מראש), רשימת מחיצות, אישור, התקדמות, אתחול, אימות.</td></tr>
+<tr><th>כלים</th><td>עורך HEX, דפדפן super, scatter, מידע על קובץ, שחזור ממצב תקול.</td></tr>
+<tr><th>הגדרות</th><td>מנוע ברירת מחדל, מיקום פרויקטים, SP Flash Tool (התקנה/נתיב), זום, מצב מתקדם, חבילת תמיכה, עדכון.</td></tr>
+</table>
+
+<h2>4. דגמים: אותו מסך ("3. עריכה") בשלושה סגנונות</h2>
+<p>אותו תוכן בדיוק. ההבדל הוא רק בארגון וברגש. המסך כולל: סרגל שלבים, שבב מכשיר, ארבע מטרות עם מתג, מד מקום פנוי בתוך "אפשרויות", ופעולה ראשית.</p>
+
+<div class="frame-title">א. שולחן עבודה <small>שטוח ומסורתי, ניווט בצד, מהיר לסריקה. הכי קרוב לתוכנת Windows רגילה.</small></div>
+<div class="mock"><div id="mA" class="A"></div></div>
+
+<div class="frame-title">ב. מסלול <small>מסך אחד בכל פעם, גדול ורגוע, מתאים למי שלא מכיר את הנושא.</small></div>
+<div class="mock"><div id="mB" class="B"></div></div>
+
+<div class="frame-title">ג. מסוף <small>כהה וצפוף, היומן תמיד פתוח למטה. מתאים למשתמשי כוח שרוצים לראות הכול.</small></div>
+<div class="mock"><div id="mC" class="C"></div></div>
+
+<div class="pick">
+<b>החלטה שלך:</b> איזה סגנון (א / ב / ג), או שילוב (למשל ב כברירת מחדל ו-ג כ"מצב מתקדם"). אחרי הבחירה אבנה מסך אחד בפועל ב-WinForms, ואז נחזור על הדפוס לשאר המסכים.
+</div>
+
+</div>
+
+<svg width="0" height="0" style="position:absolute">
+<symbol id="plug" viewBox="0 0 24 24"><path d="M9 2v6M15 2v6M6 8h12v4a6 6 0 0 1-12 0z M12 18v4"/></symbol>
+<symbol id="save" viewBox="0 0 24 24"><path d="M12 3v12m0 0l-4-4m4 4l4-4M4 17v3h16v-3"/></symbol>
+<symbol id="edit" viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16z M13.5 6.5l4 4"/></symbol>
+<symbol id="check" viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.500-1-8-4-8-9V6z M8.500 12l2.500 2.500 4.500-5"/></symbol>
+<symbol id="bolt" viewBox="0 0 24 24"><path d="M13 2L4 14h7l-1 8 9-12h-7z"/></symbol>
+<symbol id="gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/></symbol>
+<symbol id="help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.500 9a2.500 2.500 0 1 1 3.500 2.300c-.7.4-1 .9-1 1.700M12 17v.1"/></symbol>
+<symbol id="folder" viewBox="0 0 24 24"><path d="M3 6h6l2 2h10v11H3z"/></symbol>
+<symbol id="tick" viewBox="0 0 24 24"><path d="M5 12.500l4.500 4.500L19 7.500"/></symbol>
+</svg>
+
+<template id="tpl">
+<div class="app">
+  <header class="top">
+    <span class="brand">RO2RW</span>
+    <span class="proj"><svg class="i"><use href="#folder"/></svg>Redmi 12  ·  MT6769 <span style="opacity:.6">▾</span></span>
+    <span class="chip"><span class="dot"></span>מחובר: COM40 · BROM</span>
+    <span class="sp"></span>
+    <button class="ibtn" title="הגדרות"><svg class="i"><use href="#gear"/></svg></button>
+    <button class="ibtn" title="עזרה"><svg class="i"><use href="#help"/></svg></button>
+  </header>
+
+  <nav class="steps">
+    <a class="done"><span class="ic"><svg class="i"><use href="#plug"/></svg></span><span><span class="n">1</span> חיבור<small class="st">מחובר</small></span></a>
+    <a class="done"><span class="ic"><svg class="i"><use href="#save"/></svg></span><span><span class="n">2</span> גיבוי<small class="st">הושלם, אומת</small></span></a>
+    <a class="on"><span class="ic"><svg class="i"><use href="#edit"/></svg></span><span><span class="n">3</span> עריכה<small class="st">3 מטרות נבחרו</small></span></a>
+    <a><span class="ic"><svg class="i"><use href="#check"/></svg></span><span><span class="n">4</span> בדיקה<small class="st">ממתין</small></span></a>
+    <a><span class="ic"><svg class="i"><use href="#bolt"/></svg></span><span><span class="n">5</span> צריבה<small class="st">ממתין</small></span></a>
+  </nav>
+
+  <main>
+    <h2 class="t">עריכה</h2>
+    <p class="lead">בחר מה לעשות במכשיר. התוכנה תבחר את הקבצים הנכונים מהגיבוי.</p>
+    <ul class="goals">
+      <li>
+        <div class="row"><label class="sw"><input type="checkbox" checked><i></i></label>
+          <div><div class="name">Root עם Magisk</div><div class="desc">עריכת קובץ ההפעלה. <span class="file">init_boot_a.img</span> · Magisk 28.1</div></div></div>
+        <details class="opt"><summary>אפשרויות</summary><p class="desc">ABI: אוטומטי (arm64-v8a). שמור הצפנה: כן. שמור verity: לא.</p></details>
+      </li>
+      <li>
+        <div class="row"><label class="sw"><input type="checkbox" checked><i></i></label>
+          <div><div class="name">כיבוי AVB</div><div class="desc">מאפשר לאתחל קבצים ערוכים. <span class="file">vbmeta_a.img</span> · verity ו-verification</div></div></div>
+      </li>
+      <li>
+        <div class="row"><label class="sw"><input type="checkbox" checked><i></i></label>
+          <div><div class="name">הסרת Orange State</div><div class="desc">בלי השהיה ובלי הודעת אזהרה באתחול. <span class="file">lk_a.img</span> · אנדרואיד 10+</div></div></div>
+      </li>
+      <li>
+        <div class="row"><label class="sw"><input type="checkbox"><i></i></label>
+          <div><div class="name">הוספת מקום במחיצות</div><div class="desc">ממיר את super לקריאה וכתיבה. <span class="file">super.img</span> · 9.1 GB, פנוי 412 MB</div></div></div>
+        <details class="opt" open><summary>אפשרויות: מקום לכל מחיצה</summary>
+          <div class="bars">
+            <div class="bar"><span>system</span><span class="tr"><b style="width:78%"></b><em style="inset-inline-start:78%;width:12%"></em></span><span>+ 300 MB</span></div>
+            <div class="bar"><span>vendor</span><span class="tr"><b style="width:55%"></b><em style="inset-inline-start:55%;width:8%"></em></span><span>+ 120 MB</span></div>
+            <div class="bar"><span>product</span><span class="tr"><b style="width:40%"></b><em style="inset-inline-start:40%;width:5%"></em></span><span>+ 60 MB</span></div>
+          </div>
+        </details>
+      </li>
+    </ul>
+  </main>
+
+  <footer class="action">
+    <span class="sum">3 מטרות · 3 קבצים ישתנו · המקור לא נוגע</span>
+    <span class="sp"></span>
+    <button class="btn">חזרה</button>
+    <button class="btn main">בצע עריכה ←</button>
+  </footer>
+
+  <div class="logline logbar-A">יומן: מוכן. כל הקבצים ב-C:\RO2RW\Projects\Redmi12</div>
+  <div class="logline logbar-B">יומן: מוכן.</div>
+  <section class="log">
+    <div class="hd"><b>יומן</b><span style="opacity:.6">C:\RO2RW\Projects\Redmi12</span></div>
+    <div class="ok">✔ גיבוי אומת: 38 מחיצות, SHA-256 נשמר</div>
+    <div>&gt; magisk: init_boot_a.img  ABI=arm64-v8a</div>
+    <div>&gt; vbmeta_a.img  flags: verity=off verification=off</div>
+    <div>&gt; lk_a.img  patch: delay, text</div>
+    <div>ממתין לאישור עריכה...</div>
+  </section>
+</div>
+</template>
+
+<script>
+(function(){
+  var t = document.getElementById('tpl');
+  ['mA','mB','mC'].forEach(function(id){
+    document.getElementById(id).appendChild(t.content.cloneNode(true));
+  });
+})();
+</script>
+</body>
+</html>
