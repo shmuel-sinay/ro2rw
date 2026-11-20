@@ -31,7 +31,7 @@ static class TestMain
                         {
                             c.Log = Console.WriteLine;
                             c.Open(a[1]);
-                            var st = new Settings { SparseOutput = a.Length > 3 && a[3] == "sparse", RemoveWifi = Array.IndexOf(a, "nowifi") >= 0 };
+                            var st = new Settings { SparseOutput = a.Length > 3 && a[3] == "sparse" };
                             c.Analyse(st);
                             c.Plan(st);
                             Console.WriteLine("out=" + c.Write(st, a[2]));
@@ -217,6 +217,40 @@ static class TestMain
                         string text = a[1].Replace("\\r", "\r").Replace("\\n", "\n");
                         var cap = new System.Text.StringBuilder();
                         MtkClient.PumpLines(new StringReader(text), cap, s => Console.WriteLine("L:" + s.Trim()), s => Console.WriteLine("S:" + s.Trim()));
+                        return 0;
+                    }
+                case "backuptest":
+                    {
+                        // backuptest <emptyDir>  -> scenario over a throwaway project folder, one result per line
+                        string root = a[1], ed = Path.Combine(root, "ערוך");
+                        Directory.CreateDirectory(ed);
+                        File.WriteAllText(Path.Combine(root, "a.img"), "AAAA");
+                        File.WriteAllText(Path.Combine(root, "b.img"), "BBBB");
+                        File.WriteAllText(Path.Combine(root, "gpt.bin"), "GPT");
+                        File.WriteAllText(Path.Combine(root, "x_scatter.txt"), "S");
+                        File.WriteAllText(Path.Combine(ed, "a.img"), "EDITED");
+                        var t0 = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+                        Console.WriteLine("candidates:" + string.Join(",", Backup.CandidateImages(root)));
+                        var m = Backup.Create(root, Backup.CandidateImages(root), 24, t0, () => false, s => { });
+                        Console.WriteLine("hash:" + m.Files.First(f => f.Name == "a.img").Sha256);
+                        var m2 = Backup.Load(root);
+                        Console.WriteLine("roundtrip:" + m2.RetentionHours + "," + m2.CreatedUtc.ToString("o") + "," + m2.Files.Count);
+                        Console.WriteLine("verify1:" + string.Join(",", Backup.Verify(root, m2, null, () => false)));
+                        Console.WriteLine("restoreset:" + string.Join(",", Backup.RestoreSet(root, ed, m2)));
+                        File.WriteAllText(Path.Combine(root, "b.img"), "BBBX");
+                        Console.WriteLine("verify2:" + string.Join(",", Backup.Verify(root, m2, null, () => false)));
+                        Console.WriteLine("verify-only-a:" + string.Join(",", Backup.Verify(root, m2, new[] { "a.img" }, () => false)));
+                        var never = new BackupManifest { CreatedUtc = t0, RetentionHours = 0 };
+                        Console.WriteLine("expired:" + Backup.IsExpired(m2, t0.AddHours(23)) + "," + Backup.IsExpired(m2, t0.AddHours(24)) + "," + Backup.IsExpired(never, t0.AddYears(10)));
+                        Console.WriteLine("remaining:" + Backup.Remaining(m2, t0.AddHours(6)).Value.TotalHours + "," + (Backup.Remaining(never, t0) == null));
+                        int del = Backup.Expire(root, m2);
+                        Console.WriteLine("expire:" + del + " gpt=" + File.Exists(Path.Combine(root, "gpt.bin")) + " edited=" + File.Exists(Path.Combine(ed, "a.img")) + " manifest=" + File.Exists(Backup.ManifestPath(root)) + " a=" + File.Exists(Path.Combine(root, "a.img")));
+                        return 0;
+                    }
+                case "mustconvert":
+                    {
+                        // mustconvert <name> <fs> <size> <allNames...>
+                        Console.WriteLine(Converter.MustConvert(a[1], a[2], long.Parse(a[3]), a.Skip(4)));
                         return 0;
                     }
                 case "ls":

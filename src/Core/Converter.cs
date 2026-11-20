@@ -37,8 +37,6 @@ namespace Ro2rwPc
         public bool SparseOutput = true;
         public bool PatchVendorFstab = true;
         public bool PatchVbmeta = true;
-        /// <summary>Kosher/filtered device: delete /vendor/bin/hw/wpa_supplicant so Wi-Fi cannot connect.</summary>
-        public bool RemoveWifi = false;
     }
 
     /// <summary>Whole pipeline: open super → analyse → plan → write new super.</summary>
@@ -118,6 +116,14 @@ namespace Ro2rwPc
 
         public long DeviceSize { get { return (long)Md.BlockDevices[0].Size; } }
 
+        /// <summary>vendor (active slot) is always converted: Wi-Fi removal is automatic and cannot be skipped.</summary>
+        public static bool MustConvert(string name, string fs, long size, IEnumerable<string> allNames)
+        {
+            if (BaseName(name) != "vendor" || size <= 0 || (fs != "EROFS" && fs != "EXT4")) return false;
+            if (name.EndsWith("_b") && allNames.Contains("vendor_a")) return false;
+            return true;
+        }
+
         static string BaseName(string n)
         {
             if (n.EndsWith("_a") || n.EndsWith("_b")) return n.Substring(0, n.Length - 2);
@@ -150,9 +156,10 @@ namespace Ro2rwPc
 
         public void Analyse(Settings st)
         {
+            var names = Parts.Select(x => x.Name).ToList();
+            foreach (var p in Parts)
+                if (!p.Convert && MustConvert(p.Name, p.Fs, p.Size, names)) { p.Convert = true; Log("  " + p.Name + " נכלל בעריכה (הסרת WiFi אוטומטית)."); }
             var todo = Parts.Where(p => p.Convert && p.Size > 0).ToList();
-            if (st.RemoveWifi && !todo.Any(p => BaseName(p.Name) == "vendor"))
-                Log("! הסרת WiFi מבוקשת אבל מחיצת vendor אינה בעריכה - ה-WiFi לא יוסר. סמן גם את vendor.");
             int i = 0;
             foreach (var p in todo)
             {
@@ -162,7 +169,7 @@ namespace Ro2rwPc
                 p.Reader = p.Fs == "EROFS" ? (IFsReader)new ErofsReader(src) : new Ext4Reader(src);
                 var tree = p.Reader.ReadTree();
                 if (st.PatchVendorFstab && BaseName(p.Name) == "vendor") PatchFstabs(tree, p.Reader);
-                if (st.RemoveWifi && BaseName(p.Name) == "vendor") RemoveWifiBinary(tree, p.Reader);
+                if (BaseName(p.Name) == "vendor") RemoveWifiBinary(tree, p.Reader);
                 p.Writer = new Ext4Writer(tree, BaseName(p.Name));
                 p.MinBytes = p.Writer.MinimalBytes;
                 p.FileCount = p.Writer.FileCount;
@@ -199,7 +206,7 @@ namespace Ro2rwPc
                           ?? FindChild(FindChild(root, "bin"), "wpa_supplicant");
             if (target == null || target.Inode.Type != NodeType.File)
             {
-                Log("! לא נמצא wpa_supplicant ב-vendor - ה-WiFi לא הוסר (אולי מכשיר ללא WiFi, או נתיב אחר).");
+                Log("✖ לא נמצא wpa_supplicant ב-vendor - ה-WiFi לא הוסר (אולי מכשיר ללא WiFi, או נתיב אחר). בדוק לפני צריבה.");
                 return;
             }
             var ms = new MemoryStream();

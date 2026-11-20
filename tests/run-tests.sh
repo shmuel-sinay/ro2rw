@@ -185,7 +185,7 @@ printf 'ELF-WPA' > wsrc/bin/hw/wpa_supplicant
 printf '<permissions><feature name="android.hardware.wifi"/></permissions>' > wsrc/etc/permissions/handheld.xml
 mke2fs -q -t ext4 -O ^has_journal -d wsrc wvendor.img 40M >/dev/null 2>&1
 $T mksuper wsuper.raw 120 vendor=wvendor.img >/dev/null; img2simg wsuper.raw wsuper.sparse.img
-mkdir -p wout wex; $T super wsuper.sparse.img wout sparse nowifi >/dev/null 2>&1
+mkdir -p wout wex; $T super wsuper.sparse.img wout sparse >/dev/null 2>&1
 simg2img wout/super_rw.img wout/back.raw; python3 "$ROOT/tests/lpcheck.py" wout/back.raw wex >/dev/null
 if debugfs -R "stat /bin/hw/wpa_supplicant" wex/vendor_a.img 2>&1 | grep -q "File not found" \
    && debugfs -R "stat /etc/permissions/handheld.xml" wex/vendor_a.img 2>&1 | grep -q "Inode:" \

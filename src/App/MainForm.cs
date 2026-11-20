@@ -9,7 +9,7 @@ using System.Windows.Forms;
 
 namespace Ro2rwPc
 {
-    public sealed class MainForm : Form
+    public sealed partial class MainForm : Form
     {
         readonly Font fBase = new Font("Segoe UI", 10f);
         readonly Font fBold = new Font("Segoe UI", 10f, FontStyle.Bold);
@@ -33,7 +33,7 @@ namespace Ro2rwPc
         // RO2RW
         RadioButton rbMax, rbFixed;
         NumericUpDown nS, nV, nP, nSE, nOT, nFixed;
-        CheckBox cbSparse, cbFstab, cbNoWifi;
+        CheckBox cbSparse, cbFstab;
         Label lblTotal;
         // Magisk
         CheckBox cbKeepVerity, cbKeepEnc;
@@ -79,6 +79,7 @@ namespace Ro2rwPc
             if (firstRun && !MtkClient.UsbDkInstalled) { MtkClient.Serial = true; UpdateEngineUi(); }
             FormClosing += (s, e) => SaveUiSettings();
             LoadProjects(null);
+            StartBackupTimer();
             Log("ברוך הבא! למעלה יש לשונית לכל כלי. הכי פשוט: לחץ \"אשף\" והוא יעבור איתך על הכול.", Color.LightGreen);
             Log("זרימה ידנית: לשונית \"פרויקט וקבצים\" ← הוסף קבצים (או שאב מהמכשיר) ← עבור ללשונית הכלי (RO2RW / Root / AVB / LK) ← \"בצע\".", Color.LightGreen);
             Log("הקבצים הערוכים נשמרים בתיקייה \"ערוך\" שבתוך הפרויקט, עם אותם שמות. המקור לא משתנה.", Color.LightGreen);
@@ -107,12 +108,14 @@ namespace Ro2rwPc
             tabs.TabPages.Add(BuildFlashTab());   // 3
             tabs.TabPages.Add(BuildSpTab());      // 4
             tabs.TabPages.Add(BuildToolsTab());   // 5
+            tabs.TabPages.Add(BuildBackupTab());  // 6
             rail = new StepRail { Dock = DockStyle.Fill };
             rail.AddHeader("תהליך עבודה");
             rail.Add("שאיבה מהמכשיר", "גיבוי לפרויקט", 1, 2);
             rail.Add("עריכה", "Root, AVB, LK, מקום", 2, 1);
             rail.Add("צריבה למכשיר", "", 3, 3);
             rail.AddHeader("ניהול");
+            rail.Add("גיבוי ושחזור", "", 0, 6);
             rail.Add("קבצי הפרויקט", "", 0, 0);
             rail.Add("SP Flash Tool", "", 0, 4);
             rail.Add("כלים נוספים", "", 0, 5);
@@ -366,12 +369,11 @@ namespace Ro2rwPc
             nFixed = new NumericUpDown { Size = new Size(90, 26), Maximum = 100000, Value = 200 };
             cbSparse = Opt("פלט sparse (קטן יותר)", true);
             cbFstab = Opt("הוסף שורות ext4 ל-fstab של vendor", true);
-            cbNoWifi = Opt("הסר WiFi (מכשיר מסונן - מוחק wpa_supplicant מ-vendor)", false);
             btnPlan = new Button { Text = "תכנון מפורט לפי מחיצה...", Size = new Size(230, 32) };
             btnPlan.Click += (s, e) => OpenSuperPlan(SelectedToolPath(cmbFileRo2rw));
             p.Controls.AddRange(new Control[] { rbMax, pct, lblTotal, rbFixed });
             p.Controls.Add(OptRow("MB:", nFixed));
-            p.Controls.AddRange(new Control[] { cbSparse, cbFstab, cbNoWifi, btnPlan });
+            p.Controls.AddRange(new Control[] { cbSparse, cbFstab, new Label { Text = "הסרת WiFi מתבצעת אוטומטית בכל עריכת super.", AutoSize = true, ForeColor = Color.DimGray, Margin = new Padding(0, 4, 0, 8) }, btnPlan });
             EventHandler upd = (s, e) => UpdateSizeUi();
             foreach (var n in new[] { nS, nV, nP, nSE, nOT }) n.ValueChanged += upd;
             rbMax.CheckedChanged += upd;
@@ -397,7 +399,7 @@ namespace Ro2rwPc
             upd(goalMagisk, cmbFileMagisk, "מקבל הרשאות Root", true);
             upd(goalAvb, cmbFileAvb, "מכבה אימות verity ו-verification", true);
             upd(goalLk, cmbFileLk, "מסיר השהיה והודעת אזהרה באתחול", true);
-            upd(goalRo2rw, cmbFileRo2rw, "הופך את מחיצות super לקריאה וכתיבה", false);
+            upd(goalRo2rw, cmbFileRo2rw, "הופך את מחיצות super לקריאה וכתיבה, ומסיר WiFi אוטומטית", false);
             UpdateGoalSummary();
         }
 
@@ -628,6 +630,7 @@ namespace Ro2rwPc
             if (menu != null) foreach (ToolStripMenuItem m in menu.Items) if (m.Tag as string != "always") m.Enabled = !busy;
             btnCancel.Enabled = busy;
             UpdateGoalSummary();
+            UpdateBackupUi();
             UseWaitCursor = busy;
         }
 
@@ -681,6 +684,8 @@ namespace Ro2rwPc
                 project = Project.Open(name);
                 lblProj.Text = project.Root;
                 RefreshFiles();
+                bkWarned = false; lastVerify = "";
+                SweepBackups(); UpdateBackupUi();
             }
             catch (Exception ex) { Log("שגיאה: " + ex.Message, Color.Tomato); }
         }
@@ -906,8 +911,10 @@ namespace Ro2rwPc
                     Log("");
                     Log("▶ שאיבת רום (" + EngineName() + ") - ממתין למכשיר במצב BROM...");
                     if (FastEngine.Selected == MtkEngine.Fast) Log("  " + FastEngine.Warning, Color.Khaki);
+                    var dumpStart = DateTime.UtcNow;
                     int n = DumpEngine(proj, skip);
                     Log(string.Format("✔ נשאבו {0} מחיצות לתוך הפרויקט ({1})", n, sw.Elapsed.ToString(@"hh\:mm\:ss")));
+                    MakeDumpBackup(proj, dumpStart);
                 }
                 catch (OperationCanceledException) { Log("בוטל.", Color.Khaki); }
                 catch (Exception ex) { Log("✖ " + ex.Message); }
@@ -961,6 +968,7 @@ namespace Ro2rwPc
                 string tmp = Path.Combine(proj.Root, "_sp_dump");
                 try
                 {
+                    var dumpStart = DateTime.UtcNow;
                     Log(""); Log("▶ ReadBack דרך SP Flash Tool - ממתין למכשיר במצב BROM...", Color.DeepSkyBlue);
                     if (Directory.Exists(tmp)) Directory.Delete(tmp, true);
                     Directory.CreateDirectory(tmp);
@@ -976,6 +984,7 @@ namespace Ro2rwPc
                     var missing = parts.Except(done).ToList();
                     if (missing.Count > 0) Log("! לא נשאבו: " + string.Join(", ", missing), Color.Khaki);
                     Log(string.Format("✔ נשאבו {0} מחיצות לתוך הפרויקט ({1})", done.Count, sw.Elapsed.ToString(@"hh\:mm\:ss")), Color.LightGreen);
+                    MakeDumpBackup(proj, dumpStart);
                 }
                 catch (OperationCanceledException) { Log("בוטל.", Color.Khaki); }
                 catch (Exception ex) { Log("✖ " + ex.Message); }
@@ -1064,7 +1073,7 @@ namespace Ro2rwPc
             st.Ro2rw = new Settings
             {
                 MaxMode = rbMax.Checked, PctS = (int)nS.Value, PctV = (int)nV.Value, PctP = (int)nP.Value, PctSE = (int)nSE.Value, PctOT = (int)nOT.Value,
-                FixedMb = (int)nFixed.Value, SparseOutput = cbSparse.Checked, PatchVendorFstab = cbFstab.Checked, RemoveWifi = cbNoWifi.Checked
+                FixedMb = (int)nFixed.Value, SparseOutput = cbSparse.Checked, PatchVendorFstab = cbFstab.Checked
             };
             st.Magisk = new MagiskOptions { KeepVerity = cbKeepVerity.Checked, KeepForceEncrypt = cbKeepEnc.Checked, Abi = (string)cmbAbi.SelectedItem, RecoveryMode = cbRecovery.Checked, PatchVbmetaFlag = cbPatchVbFlag.Checked };
             st.LkDelay = cbLkDelay.Checked; st.LkText = cbLkText.Checked;
@@ -1466,7 +1475,6 @@ namespace Ro2rwPc
             t(nFixed, "כמה MB פנויים להוסיף לכל מחיצה");
             t(cbSparse, "קובץ קטן יותר. מתאים ל-fastboot ול-SP Flash Tool");
             t(cbFstab, "מוסיף שורות ext4 ל-fstab של vendor, כדי שהמערכת תעגן ext4");
-            t(cbNoWifi, "למכשיר מסונן: מוחק את wpa_supplicant מ-vendor כך שאי אפשר להתחבר ל-WiFi (לא נוגע בקובצי XML). גיבוי נשמר. חובה שגם vendor יומר");
             t(btnPlan, "לכל מחיצה: האם להמיר וכמה MB להוסיף, עם מד מקום פנוי");
             t(cmbAbi, "auto מזהה לפי init שב-ramdisk. arm64-v8a = מערכת 64 ביט, armeabi-v7a = מערכת 32 ביט");
             t(cbKeepVerity, "משאיר את dm-verity ב-fstab. בדרך כלל לא מסמנים");
@@ -1602,7 +1610,7 @@ namespace Ro2rwPc
             }
         }
 
-        void RunSpAuto()
+        void RunSpAuto(bool restore = false)
         {
             if (project == null) { Msg(this, "צור או בחר פרויקט קודם."); return; }
             string scatter = Directory.Exists(project.Edited) ? Directory.GetFiles(project.Edited, "*scatter*.txt").OrderBy(x => x).FirstOrDefault() : null;
@@ -1615,6 +1623,7 @@ namespace Ro2rwPc
             }
             List<SpFlashTool.Rom> roms;
             try { roms = SpFlashTool.EnabledRoms(scatter, project.Edited); } catch (Exception ex) { Msg(this, ex.Message, MessageBoxIcon.Error); return; }
+            if (restore) roms = SpRestoreRoms(roms);
             if (roms.Count == 0) { Msg(this, "אין מחיצות מסומנות לצריבה ב-scatter.", MessageBoxIcon.Warning); return; }
             string da = SpFlashTool.FindDa(sptoolPath);
             if (da == null)
@@ -1628,10 +1637,10 @@ namespace Ro2rwPc
             string platform = pm.Success ? pm.Groups[1].Value : null;
             bool ufs = System.Text.RegularExpressions.Regex.IsMatch(stext, @"storage:\s*UFS", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
             string cfg;
-            try { cfg = SpFlashTool.BuildConfig(project.Edited, scatter, da, platform, ufs, roms, null); }
+            try { cfg = SpFlashTool.BuildConfig(restore ? project.Root : project.Edited, scatter, da, platform, ufs, roms, null); }
             catch (Exception ex) { Msg(this, ex.Message, MessageBoxIcon.Error); return; }
             if (!Ui.Ask(this,
-                "SP Flash Tool תופעל אוטומטית ותצרוב (Download Only, בלי format):\n" +
+                (restore ? "שחזור מהגיבוי: SP Flash Tool תצרוב את הקבצים המקוריים (Download Only, בלי format):\n" : "SP Flash Tool תופעל אוטומטית ותצרוב (Download Only, בלי format):\n") +
                 string.Join("\n", roms.Select(x => "   • " + x.Name)) + "\n\n" +
                 "DA: " + Path.GetFileName(da) + "\n" +
                 "אזהרה: ניסיוני, ותלוי בגרסת SP שלך. גבה את המכשיר. מומלץ לנסות קודם עם vbmeta בלבד.\n\n" +
@@ -1715,7 +1724,7 @@ namespace Ro2rwPc
                 var kv = new List<string>
                 {
                     "max=" + rbMax.Checked, "s=" + nS.Value, "v=" + nV.Value, "p=" + nP.Value, "se=" + nSE.Value, "ot=" + nOT.Value, "fixed=" + nFixed.Value,
-                    "sparse=" + cbSparse.Checked, "fstab=" + cbFstab.Checked, "nowifi=" + cbNoWifi.Checked, "abi=" + cmbAbi.SelectedItem, "keepv=" + cbKeepVerity.Checked, "keepe=" + cbKeepEnc.Checked,
+                    "sparse=" + cbSparse.Checked, "fstab=" + cbFstab.Checked, "abi=" + cmbAbi.SelectedItem, "keepv=" + cbKeepVerity.Checked, "keepe=" + cbKeepEnc.Checked,
                     "lkdelay=" + cbLkDelay.Checked, "lktext=" + cbLkText.Checked, "skipud=" + cbSkipUserdata.Checked, "project=" + (project != null ? project.Name : ""),
                     "recovery=" + cbRecovery.Checked, "vbflag=" + cbPatchVbFlag.Checked, "lkandroid=" + cmbLkAndroid.SelectedIndex, "vbmode=" + cmbVbMode.SelectedIndex,
                     "projdir=" + (Project.BaseDirOverride ?? ""), "zoom=" + zoom.ToString(System.Globalization.CultureInfo.InvariantCulture), "engine=" + (FastEngine.Sp ? "sp" : FastEngine.Selected == MtkEngine.Fast ? (FastEngine.Serial ? "serial" : "fast") : (MtkClient.Serial ? "mtkserial" : "mtkclient")), "engcom=" + (FastEngine.Com ?? ""), "mtkcom=" + (MtkClient.Com ?? ""), "sptool=" + (sptoolPath ?? "")
@@ -1739,7 +1748,6 @@ namespace Ro2rwPc
                 n(nS, "s"); n(nV, "v"); n(nP, "p"); n(nSE, "se"); n(nOT, "ot"); n(nFixed, "fixed");
                 if (d.ContainsKey("sparse")) cbSparse.Checked = b("sparse");
                 if (d.ContainsKey("fstab")) cbFstab.Checked = b("fstab");
-                if (d.ContainsKey("nowifi")) cbNoWifi.Checked = b("nowifi");
                 if (d.ContainsKey("abi") && cmbAbi.Items.Contains(d["abi"])) cmbAbi.SelectedItem = d["abi"];
                 cbKeepVerity.Checked = b("keepv"); cbKeepEnc.Checked = b("keepe");
                 if (d.ContainsKey("lkdelay")) cbLkDelay.Checked = b("lkdelay");

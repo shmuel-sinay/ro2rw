@@ -25,5 +25,26 @@ check "pump CRLF percent line is status"    "S:5% of image data has been sent" "
 check "pump CR-only progress is status"     "S:10%,S:20%,S:30%" "$(pump '10%\r20%\r30%\n')"
 check "pump mixed"                          "L:Connecting,S:50% done,L:OK" "$(pump 'Connecting\r\n50% done\r\nOK\r\n')"
 
+BK=$(mktemp -d); bk() { $T backuptest "$BK" | tr -d "" | grep "^$1:" | head -1; }
+check "backup candidates skip gpt and scatter" "candidates:a.img,b.img" "$(bk candidates)"
+check "backup sha256 of AAAA" "hash:63c1dd951ffedf6f7fd968ad4efa39b8ed584f162f46e715114ee184f8de9201" "$(bk hash)"
+check "backup manifest roundtrip" "roundtrip:24,2026-01-01T00:00:00.0000000Z,2" "$(bk roundtrip)"
+check "backup verify clean" "verify1:" "$(bk verify1)"
+check "backup restore set = originals with an edited twin" "restoreset:a.img" "$(bk restoreset)"
+check "backup verify detects changed file" "verify2:b.img:hash" "$(bk verify2)"
+check "backup verify only the restore set" "verify-only-a:" "$(bk verify-only-a)"
+check "backup expiry boundary and never" "expired:False,True,False" "$(bk expired)"
+check "backup remaining time" "remaining:18,True" "$(bk remaining)"
+check "backup expire deletes only listed originals" "expire:2 gpt=True edited=True manifest=False a=False" "$(bk expire)"
+mc() { $T mustconvert "$@" | tr -d '\r'; }
+check "vendor ext4 must convert"             "True"  "$(mc vendor EXT4 100 vendor system)"
+check "vendor erofs must convert"            "True"  "$(mc vendor EROFS 100 vendor)"
+check "vendor_a must convert"                "True"  "$(mc vendor_a EROFS 100 vendor_a vendor_b system_a)"
+check "vendor_b with vendor_a is copied"     "False" "$(mc vendor_b EROFS 100 vendor_a vendor_b)"
+check "vendor_b alone must convert"          "True"  "$(mc vendor_b EROFS 100 vendor_b)"
+check "raw vendor cannot be converted"       "False" "$(mc vendor RAW 100 vendor)"
+check "empty vendor is skipped"              "False" "$(mc vendor EXT4 0 vendor)"
+check "system is not forced"                 "False" "$(mc system EROFS 100 system vendor)"
+
 echo "Ran $n logic tests, $fail failed"
 [ $fail -eq 0 ]
