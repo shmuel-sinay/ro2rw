@@ -11,7 +11,7 @@ namespace Ro2rwPc
     // Backup of the originals taken by a device dump: kept for Backup.DumpRetentionHours, then deleted. Restore flashes the originals of the edited partitions.
     public sealed partial class MainForm
     {
-        const int PageBackup = 6;
+        const int PageBackup = 5;
         Label lblBkStatus;
         Button btnBkVerify, btnBkRestore, btnBkRegister, btnBkDelete;
         System.Windows.Forms.Timer bkTimer;
@@ -167,6 +167,7 @@ namespace Ro2rwPc
             var set = Backup.RestoreSet(project.Root, project.Edited, m);
             if (set.Count == 0) { Msg(this, "אין בגיבוי קבצים שיש להם גרסה ערוכה, ולכן אין מה לשחזר.", MessageBoxIcon.Warning); return; }
             if (!Ui.Ask(this, "לשחזר מהגיבוי את הקבצים המקוריים של:\n" + string.Join("\n", set.Select(n => "   • " + n)) + "\n\nלפני הצריבה יתבצע אימות SHA-256 של הקבצים. להמשיך?", MessageBoxIcon.Warning)) return;
+            if (!ChooseEngine(false)) return;
             var proj = project;
             cancel = false; SetBusy(true);
             worker = new Thread(() =>
@@ -187,7 +188,7 @@ namespace Ro2rwPc
                     BeginInvoke(new Action(() =>
                     {
                         if (FastEngine.Sp) RunSpAuto(true);
-                        else FlashBack(set.Select(n => Path.Combine(proj.Root, n)).ToArray(), false, null);
+                        else FlashBack(set.Select(n => Path.Combine(proj.Root, n)).ToArray(), false, null, true);
                     }));
             }) { IsBackground = true };
             worker.Start();

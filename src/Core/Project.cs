@@ -15,6 +15,7 @@ namespace Ro2rwPc
         public long Size;
         public string Kind = "";
         public EditAction Action;
+        public EditAction Detected;   // what the automatic classification chose (Action may be overridden by the user)
         public bool Selected;
         public bool Edited;   // exists in "ערוך"
     }
@@ -92,6 +93,7 @@ namespace Ro2rwPc
             {
                 var pf = new ProjectFile { Path = f, Size = new FileInfo(f).Length };
                 Classify(pf);
+                pf.Detected = pf.Action;
                 pf.Edited = File.Exists(System.IO.Path.Combine(Edited, pf.Name));
                 list.Add(pf);
             }
