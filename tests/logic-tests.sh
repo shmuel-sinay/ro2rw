@@ -60,6 +60,8 @@ check "scatter flags only dumped as download"   "scatterdl:boot_a,super" "$(sdt 
 check "scatter keeps real start and size"       "scattersize:18000,80000" "$(sdt scattersize)"
 check "SP flash list reads the new scatter"     "enabled:2" "$(sdt enabled)"
 check "minimal scatter has only pgpt"           "minimal:pgpt,MT6765_empty_scatter.txt" "$(sdt minimal)"
+check "part-id candidates (SP sample first)"    "partids:34,8|34,2,3|32,1" "$(sdt partids)"
+check "preloader magic check"                   "preloader:True,False,False" "$(sdt preloader)"
 
 echo "Ran $n logic tests, $fail failed"
 [ $fail -eq 0 ]

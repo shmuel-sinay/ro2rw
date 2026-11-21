@@ -105,7 +105,7 @@ namespace Ro2rwPc
             root.Controls.Add(cbPre);
 
             var adv = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.LeftToRight, Margin = new Padding(0, 2, 0, 6) };
-            adv.Controls.Add(new Label { Text = "מתקדם: part-id של אזור המשתמש (eMMC=8):", AutoSize = true, ForeColor = Color.FromArgb(90, 99, 110), Margin = new Padding(0, 6, 6, 0) });
+            adv.Controls.Add(new Label { Text = "מתקדם: part-id של אזור המשתמש (ברירת מחדל 34, התוכנה מנסה גם 8):", AutoSize = true, ForeColor = Color.FromArgb(90, 99, 110), Margin = new Padding(0, 6, 6, 0) });
             adv.Controls.Add(nPart);
             root.Controls.Add(adv);
 

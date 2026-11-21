@@ -301,6 +301,8 @@ static class TestMain
                         Console.WriteLine("enabled:" + SpFlashTool.EnabledRoms(sc, Path.Combine(dir, "out")).Count);
                         string ms = SpDump.WriteMinimalScatter(dir, "MT6765", false);
                         Console.WriteLine("minimal:" + string.Join(",", SpDump.ReadScatter(ms).Select(e => e.Name)) + "," + Path.GetFileName(ms));
+                        Console.WriteLine("partids:" + string.Join(",", SpDump.UserPartIds(false)) + "|" + string.Join(",", SpDump.UserPartIds(true)) + "|" + string.Join(",", SpDump.Boot1PartIds));
+                        Console.WriteLine("preloader:" + SpDump.LooksLikePreloader(new byte[] { 0x4D, 0x4D, 0x4D, 0x01, 0 }) + "," + SpDump.LooksLikePreloader(new byte[] { 1, 2, 3, 4, 5 }) + "," + SpDump.LooksLikePreloader(null));
                         return 0;
                     }
                 case "ls":

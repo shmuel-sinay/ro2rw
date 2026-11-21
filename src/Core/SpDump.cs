@@ -20,10 +20,13 @@ namespace Ro2rwPc
     {
         /// <summary>The primary GPT (header + 128 entries) fits in the first 32 KiB for both 512 and 4096 byte sectors.</summary>
         public const long GptReadBytes = 0x8000;
-        public const int Boot1PartId = 1;
+        /// <summary>SP's own readback_ui_bak.xml sample uses part-id 34 for a user-area partition and 32 for the preloader; 8 and 1 are the DA enum values. The program tries both and keeps the one that returns valid data.</summary>
+        public static readonly int[] Boot1PartIds = { 32, 1 };
+        public static bool LooksLikePreloader(byte[] b) { return b != null && b.Length > 4 && b[0] == 0x4D && b[1] == 0x4D && b[2] == 0x4D; }
         public const long PreloaderReadBytes = 0x100000;
 
-        public static int UserPartId(bool ufs) { return ufs ? 2 : 8; }
+        public static int[] UserPartIds(bool ufs) { return ufs ? new[] { 34, 2, 3 } : new[] { 34, 8 }; }
+        public static int UserPartId(bool ufs) { return UserPartIds(ufs)[0]; }
 
         static readonly Regex EditNames = new Regex(@"^(boot|init_boot|vendor_boot|recovery|dtbo|vbmeta|vbmeta_system|vbmeta_vendor|lk|logo|super)(_[ab])?$", RegexOptions.IgnoreCase);
 

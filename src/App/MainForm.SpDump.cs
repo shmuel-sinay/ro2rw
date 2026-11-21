@@ -131,13 +131,22 @@ namespace Ro2rwPc
                     if (Directory.Exists(tmp)) Directory.Delete(tmp, true);
                     Directory.CreateDirectory(tmp);
                     string scatter = SpDump.WriteMinimalScatter(tmp, plan.Platform, plan.Ufs);
-                    string gptOut = Path.Combine(tmp, "gpt.bin");
-                    string cfg = SpDump.BuildRangeConfig(tmp, "sp_gpt_config.xml", da, plan.Platform, plan.Ufs, string.IsNullOrEmpty(plan.Com) ? null : plan.Com, scatter,
-                        new[] { new SpRange { PartId = plan.PartId > 0 ? plan.PartId : SpDump.UserPartId(plan.Ufs), Start = 0, Length = SpDump.GptReadBytes, OutPath = gptOut } });
+                    // part-id is not certain (SP's own sample uses 34, the DA enum says 8): read the table under each candidate in one session and keep the one that works
+                    int[] ids = (plan.PartId > 0 && plan.PartId != SpDump.UserPartId(plan.Ufs)) ? new[] { plan.PartId } : SpDump.UserPartIds(plan.Ufs);
+                    var gptRanges = ids.Select(id => new SpRange { PartId = id, Start = 0, Length = SpDump.GptReadBytes, OutPath = Path.Combine(tmp, "gpt_" + id + ".bin") }).ToList();
+                    string cfg = SpDump.BuildRangeConfig(tmp, "sp_gpt_config.xml", da, plan.Platform, plan.Ufs, string.IsNullOrEmpty(plan.Com) ? null : plan.Com, scatter, gptRanges);
                     int rc = RunSpConsole(ft, cfg, plan.Com, tmp);
-                    byte[] bytes = File.Exists(gptOut) ? File.ReadAllBytes(gptOut) : new byte[0];
-                    if (!SpDump.LooksLikeGpt(bytes))
-                        throw new IOException("SP לא החזירה טבלת GPT תקינה (קוד " + rc + ", part-id " + plan.PartId + "). אם המכשיר UFS בחר UFS, אפשר לנסות part-id אחר בהגדרות המתקדמות, או לטעון gpt.bin ידנית. ראה sp_readback_log.txt");
+                    int found = -1; byte[] bytes = null;
+                    foreach (var r in gptRanges)
+                    {
+                        if (!File.Exists(r.OutPath)) continue;
+                        var b = File.ReadAllBytes(r.OutPath);
+                        if (SpDump.LooksLikeGpt(b)) { found = r.PartId; bytes = b; break; }
+                    }
+                    if (found < 0)
+                        throw new IOException("SP לא החזירה טבלת GPT תקינה (קוד " + rc + ", part-id שנוסו: " + string.Join(", ", ids) + "). בדוק שהמכשיר במצב BROM, אם הוא UFS בחר UFS, או טען gpt.bin ידנית. ראה sp_readback_log.txt");
+                    spPart = found;
+                    Log("part-id של אזור המשתמש שעבד: " + found);
                     File.WriteAllBytes(Path.Combine(proj.Root, "gpt.bin"), bytes);
                     var g = Gpt.Parse(bytes);
                     string sc = WriteDeviceScatter(proj, g, plan.Platform, plan.Ufs);
@@ -199,8 +208,8 @@ namespace Ro2rwPc
                         string full = Path.Combine(tmp, "full_dump.bin");
                         long len = SpDump.RangeLength(gpt, names);
                         var ranges = new List<SpRange> { new SpRange { PartId = plan.PartId > 0 ? plan.PartId : SpDump.UserPartId(plan.Ufs), Start = 0, Length = len, OutPath = full } };
-                        string pre = Path.Combine(tmp, "preloader.bin");
-                        if (plan.Preloader) ranges.Add(new SpRange { PartId = SpDump.Boot1PartId, Start = 0, Length = SpDump.PreloaderReadBytes, OutPath = pre });
+                        var preRanges = SpDump.Boot1PartIds.Select(id => new SpRange { PartId = id, Start = 0, Length = SpDump.PreloaderReadBytes, OutPath = Path.Combine(tmp, "pre_" + id + ".bin") }).ToList();
+                        if (plan.Preloader) ranges.AddRange(preRanges);
                         string cfg = SpDump.BuildRangeConfig(tmp, "sp_dump_config.xml", da, plan.Platform, plan.Ufs, com, scatter, ranges);
                         int rc = RunSpConsole(ft, cfg, com, tmp);
                         long got = File.Exists(full) ? new FileInfo(full).Length : 0;
@@ -211,7 +220,12 @@ namespace Ro2rwPc
                         var written = SpDump.Split(full, gpt, names, tmp, () => cancel, p => SetProgress(p), out skipped);
                         foreach (var p in written) { MoveInto(proj, Path.Combine(tmp, p + ".img"), p + ".img"); moved.Add(p); }
                         if (skipped.Count > 0) Log("! דולגו (לא נקראו עד הסוף): " + string.Join(", ", skipped), Color.Khaki);
-                        if (plan.Preloader && File.Exists(pre) && new FileInfo(pre).Length > 0) { MoveInto(proj, pre, "preloader.bin"); Log("נשמר preloader.bin"); }
+                        if (plan.Preloader)
+                        {
+                            var okPre = preRanges.FirstOrDefault(r => File.Exists(r.OutPath) && SpDump.LooksLikePreloader(File.ReadAllBytes(r.OutPath)));
+                            if (okPre != null) { MoveInto(proj, okPre.OutPath, "preloader.bin"); Log("נשמר preloader.bin (part-id " + okPre.PartId + ")"); }
+                            else Log("! לא התקבל preloader תקין (נוסו part-id 32 ו-1).", Color.Khaki);
+                        }
                     }
                     if (moved.Count == 0) throw new IOException("לא נשאבה אף מחיצה.");
                     string sc = WriteDeviceScatter(proj, gpt, plan.Platform, plan.Ufs);
