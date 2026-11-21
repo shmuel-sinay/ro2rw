@@ -94,10 +94,10 @@ namespace Ro2rwPc
             return path;
         }
 
-        static string Esc(string s) { return s.Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;"); }
+        internal static string Esc(string s) { return s.Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;"); }
 
         // console_mode.xsd requires <connection>; same attributes as the rb_without_scatter.xml sample shipped with SP
-        static string Connection(string comPort)
+        internal static string Connection(string comPort)
         {
             if (!string.IsNullOrEmpty(comPort))
                 return "<connection type=\"BromUART\" port=\"" + Esc(comPort) + "\" timeout-count=\"3600000\" />";

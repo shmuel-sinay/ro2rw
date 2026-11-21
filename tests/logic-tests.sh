@@ -46,5 +46,20 @@ check "raw vendor cannot be converted"       "False" "$(mc vendor RAW 100 vendor
 check "empty vendor is skipped"              "False" "$(mc vendor EXT4 0 vendor)"
 check "system is not forced"                 "False" "$(mc system EROFS 100 system vendor)"
 
+sdt() { rm -rf "$SD"; mkdir -p "$SD"; $T spdumptest "$SD" | tr -d '\r' | grep "^$1:" | head -1; }
+SD=$(mktemp -d)
+check "gpt check: real / zeros / null"          "gptok:True,False,False" "$(sdt gptok)"
+check "full-dump length ends at last selected"  "range:98000" "$(sdt range)"
+check "split cuts partitions, skips truncated"  "split:boot_a,super skipped=userdata" "$(sdt split)"
+check "split content is byte exact"             "content:32768,True,524288,True,False" "$(sdt content)"
+check "edit-partition preset names"             "preset:True,False,True,False,True,True,True,True" "$(sdt preset)"
+check "range readback config attributes"        "rangecfg:True,True,True,True,False" "$(sdt rangecfg)"
+check "flash-by-name config (no scatter)"       "flashcfg:True,True,True,False" "$(sdt flashcfg)"
+check "scatter from gpt lists all partitions"   "scatter:pgpt,boot_a,lk_a,super,userdata,sgpt" "$(sdt scatter)"
+check "scatter flags only dumped as download"   "scatterdl:boot_a,super" "$(sdt scatterdl)"
+check "scatter keeps real start and size"       "scattersize:18000,80000" "$(sdt scattersize)"
+check "SP flash list reads the new scatter"     "enabled:2" "$(sdt enabled)"
+check "minimal scatter has only pgpt"           "minimal:pgpt,MT6765_empty_scatter.txt" "$(sdt minimal)"
+
 echo "Ran $n logic tests, $fail failed"
 [ $fail -eq 0 ]

@@ -253,6 +253,56 @@ static class TestMain
                         Console.WriteLine(Converter.MustConvert(a[1], a[2], long.Parse(a[3]), a.Skip(4)));
                         return 0;
                     }
+                case "spdumptest":
+                    {
+                        // spdumptest <emptyDir>: synthetic 512-byte-sector disk with a GPT, then split / configs / scatter, one result per line
+                        string dir = a[1]; Directory.CreateDirectory(dir);
+                        const int ss = 512;
+                        var parts = new[] { Tuple.Create("boot_a", 64, 127, (byte)'B'), Tuple.Create("lk_a", 128, 191, (byte)'L'), Tuple.Create("super", 192, 1215, (byte)'S'), Tuple.Create("userdata", 1216, 4000, (byte)'U') };
+                        var disk = new byte[1216 * ss];
+                        Array.Copy(System.Text.Encoding.ASCII.GetBytes("EFI PART"), 0, disk, ss, 8);
+                        BitConverter.GetBytes(4095L).CopyTo(disk, ss + 32);
+                        BitConverter.GetBytes(4062L).CopyTo(disk, ss + 48);
+                        BitConverter.GetBytes(2L).CopyTo(disk, ss + 72);
+                        BitConverter.GetBytes(128).CopyTo(disk, ss + 80);
+                        BitConverter.GetBytes(128).CopyTo(disk, ss + 84);
+                        for (int i = 0; i < parts.Length; i++)
+                        {
+                            int o = 2 * ss + i * 128;
+                            disk[o] = 0xAF;   // non-zero type GUID
+                            BitConverter.GetBytes((long)parts[i].Item2).CopyTo(disk, o + 32);
+                            BitConverter.GetBytes((long)parts[i].Item3).CopyTo(disk, o + 40);
+                            System.Text.Encoding.Unicode.GetBytes(parts[i].Item1).CopyTo(disk, o + 56);
+                            for (int s = parts[i].Item2; s <= parts[i].Item3 && (s + 1) * ss <= disk.Length; s++)
+                                for (int k = 0; k < ss; k++) disk[s * ss + k] = parts[i].Item4;
+                        }
+                        var gpt = Gpt.Parse(disk);
+                        Console.WriteLine("gptok:" + SpDump.LooksLikeGpt(disk) + "," + SpDump.LooksLikeGpt(new byte[0x8000]) + "," + SpDump.LooksLikeGpt(null));
+                        Console.WriteLine("range:" + SpDump.RangeLength(gpt, new[] { "boot_a", "super" }).ToString("x"));
+                        string full = Path.Combine(dir, "full.bin"); File.WriteAllBytes(full, disk);
+                        var skipped = new System.Collections.Generic.List<string>();
+                        var written = SpDump.Split(full, gpt, new[] { "boot_a", "super", "userdata" }, Path.Combine(dir, "out"), () => false, p => { }, out skipped);
+                        Console.WriteLine("split:" + string.Join(",", written) + " skipped=" + string.Join(",", skipped));
+                        byte[] b = File.ReadAllBytes(Path.Combine(dir, "out", "boot_a.img")), sp = File.ReadAllBytes(Path.Combine(dir, "out", "super.img"));
+                        Console.WriteLine("content:" + b.Length + "," + b.All(x => x == (byte)'B') + "," + sp.Length + "," + sp.All(x => x == (byte)'S') + "," + File.Exists(Path.Combine(dir, "out", "userdata.img")));
+                        Console.WriteLine("preset:" + string.Join(",", new[] { "boot_a", "userdata", "vbmeta_system_b", "vendor_a", "super", "lk", "BOOT_A", "recovery" }.Select(n => SpDump.IsEditPartition(n))));
+                        string da = Path.Combine(dir, "DA.bin"); File.WriteAllText(da, "x");
+                        string rc = SpDump.BuildRangeConfig(dir, "rb.xml", da, "MT6765", false, null, null, new[] { new SpRange { PartId = 8, Start = 0, Length = SpDump.GptReadBytes, OutPath = Path.Combine(dir, "gpt.bin") } });
+                        string rtext = File.ReadAllText(rc);
+                        Console.WriteLine("rangecfg:" + rtext.Contains("<readback>") + "," + rtext.Contains("part-id=\"8\"") + "," + rtext.Contains("readback-length=\"0x0000000000008000\"") + "," + rtext.Contains("start-address=\"0x0000000000000000\"") + "," + rtext.Contains("<readback-withoutscatter>"));
+                        string fc = SpDump.BuildByNameFlashConfig(dir, da, "MT6765", false, "COM5", new[] { new System.Collections.Generic.KeyValuePair<string, string>("boot_a", Path.Combine(dir, "out", "boot_a.img")) });
+                        string ftext = File.ReadAllText(fc);
+                        Console.WriteLine("flashcfg:" + ftext.Contains("<download-withoutScatter>") + "," + ftext.Contains("partition=\"boot_a\"") + "," + ftext.Contains("BromUART") + "," + ftext.Contains("<da-download-all"));
+                        string sc = ScatterWriter.Write(dir, "t", gpt, "MT6765", false, n => File.Exists(Path.Combine(dir, "out", n + ".img")) ? n + ".img" : null);
+                        var ent = SpDump.ReadScatter(sc);
+                        Console.WriteLine("scatter:" + string.Join(",", ent.Select(e => e.Name)));
+                        Console.WriteLine("scatterdl:" + string.Join(",", ent.Where(e => e.Download).Select(e => e.Name)));
+                        Console.WriteLine("scattersize:" + ent.First(e => e.Name == "super").Start.ToString("x") + "," + ent.First(e => e.Name == "super").Size.ToString("x"));
+                        Console.WriteLine("enabled:" + SpFlashTool.EnabledRoms(sc, Path.Combine(dir, "out")).Count);
+                        string ms = SpDump.WriteMinimalScatter(dir, "MT6765", false);
+                        Console.WriteLine("minimal:" + string.Join(",", SpDump.ReadScatter(ms).Select(e => e.Name)) + "," + Path.GetFileName(ms));
+                        return 0;
+                    }
                 case "ls":
                     using (var src = new RawFileSource(a[1]))
                     {

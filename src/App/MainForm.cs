@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Drawing;
 using System.IO;
 using System.Linq;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Windows.Forms;
 
@@ -253,15 +254,17 @@ namespace Ro2rwPc
             t.Controls.Add(Sub("עורך HEX, יצירת scatter, תכנון super ומידע על קבצים.", 34));
             var btnHex = new Button { Text = "עורך HEX - חיפוש והחלפה...", Location = new Point(6, 76), Size = new Size(280, 34) };
             btnHex.Click += (s, e) => { var f = SelectedFile(); using (var h = new HexForm(f != null ? f.Path : null)) h.ShowDialog(this); };
-            var btnScatter = new Button { Text = "צור scatter לתיקיית \"ערוך\"", Location = new Point(6, 118), Size = new Size(280, 32) };
+            var btnScatter = new Button { Text = "scatter מהקבצים הערוכים (לתיקיית \"ערוך\")", Location = new Point(6, 118), Size = new Size(280, 32) };
             btnScatter.Click += (s, e) => { if (project != null) EditedScatter.Create(project, x => Log(x)); else Msg(this, "בחר פרויקט קודם."); };
-            var btnPlan2 = new Button { Text = "תכנון מפורט של super...", Location = new Point(6, 156), Size = new Size(280, 32) };
+            var btnScatterTool = new Button { Text = "כלי scatter (מ-gpt.bin או מהמכשיר)...", Location = new Point(6, 156), Size = new Size(280, 32) };
+            btnScatterTool.Click += (s, e) => OpenScatterTool();
+            var btnPlan2 = new Button { Text = "תכנון מפורט של super...", Location = new Point(6, 194), Size = new Size(280, 32) };
             btnPlan2.Click += (s, e) => OpenSuperPlan(null);
-            var btnInfo = new Button { Text = "מידע על קובץ...", Location = new Point(6, 194), Size = new Size(280, 32) };
+            var btnInfo = new Button { Text = "מידע על קובץ...", Location = new Point(6, 232), Size = new Size(280, 32) };
             btnInfo.Click += (s, e) => FileInfoTool();
-            var btnHelp = new Button { Text = "מדריך מפורט (F1)", Location = new Point(6, 244), Size = new Size(280, 32) };
+            var btnHelp = new Button { Text = "מדריך מפורט (F1)", Location = new Point(6, 282), Size = new Size(280, 32) };
             btnHelp.Click += (s, e) => { using (var h = new HelpForm()) h.ShowDialog(this); };
-            t.Controls.AddRange(new Control[] { btnHex, btnScatter, btnPlan2, btnInfo, btnHelp });
+            t.Controls.AddRange(new Control[] { btnHex, btnScatter, btnScatterTool, btnPlan2, btnInfo, btnHelp });
             return t;
         }
 
@@ -588,81 +591,6 @@ namespace Ro2rwPc
                 catch (OperationCanceledException) { Log("בוטל.", Color.Khaki); }
                 catch (Exception ex) { Log("✖ " + ex.Message); }
                 finally { SetStatus(""); SetBusy(false); BeginInvoke(new Action(RefreshFiles)); }
-            }) { IsBackground = true };
-            worker.Start();
-        }
-
-        // SP Flash Tool ReadBack (read only) straight into the project, driven from the UI
-        void DumpRomSp()
-        {
-            if (ResolveSpTool() == null)
-            {
-                using (var d = new OpenFileDialog { Title = "בחר את flash_tool.exe (או: לשונית SP ← התקן SP לתוך התוכנה)", Filter = "SP Flash Tool|flash_tool*.exe;FlashTool*.exe|כל הקבצים|*.exe" })
-                { if (d.ShowDialog(this) != DialogResult.OK) return; sptoolPath = d.FileName; }
-            }
-            string da = SpFlashTool.FindDa(sptoolPath);
-            if (da == null)
-            {
-                using (var d = new OpenFileDialog { Title = "בחר MTK_AllInOne_DA.bin", Filter = "DA|*.bin|כל הקבצים|*.*" })
-                { if (d.ShowDialog(this) != DialogResult.OK) return; da = d.FileName; }
-            }
-            string scatter = Directory.GetFiles(project.Root, "*scatter*.txt").OrderBy(x => x).FirstOrDefault();
-            string platform = null; bool ufs = false; List<string> parts;
-            if (scatter != null)
-            {
-                string stext = File.ReadAllText(scatter);
-                var pm = System.Text.RegularExpressions.Regex.Match(stext, @"platform:\s*(MT[0-9]{4}[A-Z]?)");
-                if (pm.Success) platform = pm.Groups[1].Value.ToUpperInvariant();
-                ufs = System.Text.RegularExpressions.Regex.IsMatch(stext, @"storage:\s*UFS", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-                parts = SpFlashTool.ScatterPartitions(scatter, cbSkipUserdata.Checked);
-            }
-            else parts = new List<string>(SpFlashTool.DefaultReadbackPartitions);
-            if (platform == null)
-            {
-                platform = Prompt("דגם המעבד (למשל MT6765):", "SP Flash Tool - ReadBack");
-                if (string.IsNullOrWhiteSpace(platform)) return;
-                platform = platform.Trim().ToUpperInvariant();
-            }
-            string com = Prompt("מספר COM של המכשיר (אופציונלי - ריק = זיהוי אוטומטי דרך USB, למשל COM40):", "SP Flash Tool - ReadBack");
-            if (com != null) com = com.Trim();
-            if (!Ui.Ask(this,
-                "ReadBack דרך SP Flash Tool (קריאה בלבד, לא נכתב כלום למכשיר) לפרויקט \"" + project.Name + "\":\n\n" +
-                (scatter != null ? "מחיצות לפי ה-scatter של הפרויקט (" + parts.Count + ").\n" : "אין scatter בפרויקט - נשאבות המחיצות הנפוצות לעריכה:\n   " + string.Join(", ", parts) + "\n") +
-                "\nכבה את המכשיר, לחץ כן, ואז חבר אותו עם לחצני העוצמה.\n\nלהמשיך?")) return;
-            cancel = false; SetBusy(true); SetStatus("");
-            var proj = project; string ft = sptoolPath; string comPort = string.IsNullOrEmpty(com) ? null : com;
-            worker = new Thread(() =>
-            {
-                var sw = Stopwatch.StartNew();
-                string tmp = Path.Combine(proj.Root, "_sp_dump");
-                try
-                {
-                    var dumpStart = DateTime.UtcNow;
-                    Log(""); Log("▶ ReadBack דרך SP Flash Tool - ממתין למכשיר במצב BROM...", Color.DeepSkyBlue);
-                    if (Directory.Exists(tmp)) Directory.Delete(tmp, true);
-                    Directory.CreateDirectory(tmp);
-                    string cfg = SpFlashTool.BuildReadbackConfig(tmp, tmp, da, platform, ufs, parts, comPort);
-                    var runner = new MtkClient { Log = s => Log(s), Status = SetStatus, Cancelled = () => cancel };
-                    var done = SpFlashTool.RunReadback(ft, cfg, tmp, parts, comPort, runner);
-                    foreach (var p in done)
-                    {
-                        string dst = Path.Combine(proj.Root, p + ".img");
-                        if (File.Exists(dst)) File.Delete(dst);
-                        File.Move(SpFlashTool.ReadbackFile(tmp, p), dst);
-                    }
-                    var missing = parts.Except(done).ToList();
-                    if (missing.Count > 0) Log("! לא נשאבו: " + string.Join(", ", missing), Color.Khaki);
-                    Log(string.Format("✔ נשאבו {0} מחיצות לתוך הפרויקט ({1})", done.Count, sw.Elapsed.ToString(@"hh\:mm\:ss")), Color.LightGreen);
-                    MakeDumpBackup(proj, dumpStart);
-                }
-                catch (OperationCanceledException) { Log("בוטל.", Color.Khaki); }
-                catch (Exception ex) { Log("✖ " + ex.Message); }
-                finally
-                {
-                    try { var lg = Path.Combine(tmp, "sp_readback_log.txt"); if (File.Exists(lg)) File.Copy(lg, Path.Combine(proj.Root, "sp_readback_log.txt"), true); } catch { }
-                    try { Directory.Delete(tmp, true); } catch { }
-                    SetStatus(""); SetBusy(false); BeginInvoke(new Action(RefreshFiles));
-                }
             }) { IsBackground = true };
             worker.Start();
         }
@@ -1259,8 +1187,8 @@ namespace Ro2rwPc
         {
             if (project == null) { Msg(this, "צור או בחר פרויקט קודם."); return; }
             string scatter = Directory.Exists(project.Edited) ? Directory.GetFiles(project.Edited, "*scatter*.txt").OrderBy(x => x).FirstOrDefault() : null;
-            if (scatter == null) { try { EditedScatter.Create(project, x => Log(x)); } catch { } scatter = Directory.Exists(project.Edited) ? Directory.GetFiles(project.Edited, "*scatter*.txt").OrderBy(x => x).FirstOrDefault() : null; }
-            if (scatter == null) { Msg(this, "לא נמצא scatter בתיקייה \"ערוך\". בצע עריכה, או הוסף את ה-scatter של הקושחה לפרויקט.", MessageBoxIcon.Warning); return; }
+            if (scatter == null) { try { EditedScatter.Create(project, x => Log(x), spChip); } catch { } scatter = Directory.Exists(project.Edited) ? Directory.GetFiles(project.Edited, "*scatter*.txt").OrderBy(x => x).FirstOrDefault() : null; }
+            if (scatter == null) { RunSpByName(restore); return; }
             if (ResolveSpTool() == null)
             {
                 using (var d = new OpenFileDialog { Title = "בחר את flash_tool.exe (או: לשונית SP ← התקן SP לתוך התוכנה)", Filter = "SP Flash Tool|flash_tool*.exe;FlashTool*.exe|כל הקבצים|*.exe" })
@@ -1269,7 +1197,11 @@ namespace Ro2rwPc
             List<SpFlashTool.Rom> roms;
             try { roms = SpFlashTool.EnabledRoms(scatter, project.Edited); } catch (Exception ex) { Msg(this, ex.Message, MessageBoxIcon.Error); return; }
             if (restore) roms = SpRestoreRoms(roms);
-            if (roms.Count == 0) { Msg(this, "אין מחיצות מסומנות לצריבה ב-scatter.", MessageBoxIcon.Warning); return; }
+            if (roms.Count == 0)
+            {
+                if (File.Exists(Path.Combine(project.Root, "gpt.bin"))) { RunSpByName(restore); return; }
+                Msg(this, "אין מחיצות מסומנות לצריבה ב-scatter.", MessageBoxIcon.Warning); return;
+            }
             string da = SpFlashTool.FindDa(sptoolPath);
             if (da == null)
             {
@@ -1280,6 +1212,13 @@ namespace Ro2rwPc
             string stext = File.ReadAllText(scatter);
             var pm = System.Text.RegularExpressions.Regex.Match(stext, @"platform:\s*(\S+)");
             string platform = pm.Success ? pm.Groups[1].Value : null;
+            if (platform == null || !Regex.IsMatch(platform, @"^MT[0-9]{4}[A-Z]?$")) platform = spChip;
+            if (platform == null)
+            {
+                var chipIn = Prompt("דגם המעבד (למשל MT6765):", "SP Flash Tool");
+                if (string.IsNullOrWhiteSpace(chipIn)) return;
+                platform = chipIn.Trim().ToUpperInvariant();
+            }
             bool ufs = System.Text.RegularExpressions.Regex.IsMatch(stext, @"storage:\s*UFS", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
             string cfg;
             try { cfg = SpFlashTool.BuildConfig(restore ? project.Root : project.Edited, scatter, da, platform, ufs, roms, null); }
@@ -1372,7 +1311,7 @@ namespace Ro2rwPc
                     "sparse=" + cbSparse.Checked, "fstab=" + cbFstab.Checked, "abi=" + cmbAbi.SelectedItem, "keepv=" + cbKeepVerity.Checked, "keepe=" + cbKeepEnc.Checked,
                     "lkdelay=" + cbLkDelay.Checked, "lktext=" + cbLkText.Checked, "skipud=" + cbSkipUserdata.Checked, "project=" + (project != null ? project.Name : ""),
                     "recovery=" + cbRecovery.Checked, "vbflag=" + cbPatchVbFlag.Checked, "lkandroid=" + cmbLkAndroid.SelectedIndex, "vbmode=" + cmbVbMode.SelectedIndex,
-                    "projdir=" + (Project.BaseDirOverride ?? ""), "zoom=" + zoom.ToString(System.Globalization.CultureInfo.InvariantCulture), "engdump=" + defDump, "engflash=" + defFlash, "engcom=" + (FastEngine.Com ?? ""), "mtkcom=" + (MtkClient.Com ?? ""), "sptool=" + (sptoolPath ?? "")
+                    "projdir=" + (Project.BaseDirOverride ?? ""), "zoom=" + zoom.ToString(System.Globalization.CultureInfo.InvariantCulture), "engdump=" + defDump, "engflash=" + defFlash, "engcom=" + (FastEngine.Com ?? ""), "mtkcom=" + (MtkClient.Com ?? ""), "sptool=" + (sptoolPath ?? ""), "spchip=" + (spChip ?? ""), "spufs=" + spUfs, "spcom=" + (spCom ?? ""), "sppart=" + spPart
                 };
                 File.WriteAllLines(SettingsPath, kv);
             }
@@ -1408,6 +1347,9 @@ namespace Ro2rwPc
                 if (d.ContainsKey("mtkcom") && d["mtkcom"].Length > 0) MtkClient.Com = d["mtkcom"];
                 LoadEngineDefaults(d);
                 if (d.ContainsKey("sptool") && d["sptool"].Length > 0) sptoolPath = d["sptool"];
+                if (d.ContainsKey("spchip") && Regex.IsMatch(d["spchip"], @"^MT[0-9]{4}[A-Z]?$")) spChip = d["spchip"];
+                spUfs = b("spufs"); if (d.ContainsKey("spcom")) spCom = d["spcom"].Length > 0 ? d["spcom"] : null;
+                if (d.ContainsKey("sppart") && int.TryParse(d["sppart"], out ix)) spPart = ix;
                 float zz;
                 if (d.ContainsKey("zoom") && float.TryParse(d["zoom"], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out zz) && Math.Abs(zz - 1f) > 0.01f) Shown += (s2, e2) => SetZoom(zz);
             }
