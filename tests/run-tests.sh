@@ -226,7 +226,8 @@ off=struct.unpack('>Q', d[len(d)-64+20:len(d)-64+28])[0]
 assert d[off:off+4]==b'AVB0' and d[off+123]&3==3
 PY
 cd ..
-# per-partition plan (SuperPlan): system +20MB converted, vendor copied as-is, product +5MB
+# per-partition plan (SuperPlan): system +20MB converted, product +5MB; the plan says vendor_a=copy, but vendor is always
+# converted (Wi-Fi removal is mandatory), so it must come out as a rewritten ext4, not as the original bytes
 mkdir -p plan
 cp super.sparse.img plan/super.img
 printf 'system_a=convert,20\nvendor_a=copy,0\nproduct_a=convert,5\n' > plan/super.img.ro2rw-plan.txt
@@ -238,9 +239,10 @@ import re
 t=open('plan/lp.txt').read()
 size={m.group(1):int(m.group(2)) for m in re.finditer(r'(\w+)\s+attr=\d+ group=\d+ size=(\d+)', t)}
 orig={m.group(1):int(m.group(2)) for m in re.finditer(r'(\w+)\s+attr=\d+ group=\d+ size=(\d+)', open('lp_orig.txt').read())}
-assert size['vendor_a']==orig['vendor_a'], ('vendor changed', size, orig)
-assert open('plan/ex/vendor_a.img','rb').read()==open('ex_orig/vendor_a.img','rb').read()
 import subprocess
+assert open('plan/ex/vendor_a.img','rb').read()!=open('ex_orig/vendor_a.img','rb').read(), ('vendor was copied as-is although it must always be converted', size, orig)
+vfs=subprocess.run(['dumpe2fs','-h','plan/ex/vendor_a.img'],capture_output=True,text=True)
+assert vfs.returncode==0 and 'Filesystem features' in vfs.stdout, 'vendor_a is not a readable ext4 after conversion'
 fs=subprocess.run(['dumpe2fs','-h','plan/ex/system_a.img'],capture_output=True,text=True).stdout
 free=int(re.search(r'Free blocks:\s+(\d+)',fs).group(1))*4096
 assert 19<<20 <= free <= 23<<20, free
