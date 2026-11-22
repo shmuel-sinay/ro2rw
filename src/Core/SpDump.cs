@@ -39,6 +39,39 @@ namespace Ro2rwPc
         }
 
         /// <summary>Bytes from the start of the user area to the end of the last selected partition.</summary>
+        /// <summary>SP reads the readback length as 32 bits: a range of 4 GiB or more silently wraps (5830082560 came back as 1535115264). Each read stays well below that.</summary>
+        public const long MaxReadBytes = 1L << 30;
+
+        /// <summary>Splits one range into consecutive reads of at most <paramref name="max"/> bytes; the pieces are written to OutPath + ".partN" (a single piece keeps OutPath).</summary>
+        public static List<SpRange> Chunk(SpRange r, long max)
+        {
+            var list = new List<SpRange>();
+            if (r.Length <= max) { list.Add(r); return list; }
+            for (long off = 0; off < r.Length; off += max)
+                list.Add(new SpRange { PartId = r.PartId, Start = r.Start + off, Length = Math.Min(max, r.Length - off), OutPath = r.OutPath + ".part" + list.Count });
+            return list;
+        }
+
+        /// <summary>Joins the pieces made by <see cref="Chunk"/> back into <paramref name="target"/> and deletes them. Returns the total size; a missing or short piece stops the join, so the result is a shorter file.</summary>
+        public static long Join(IList<SpRange> pieces, string target, long expectedTotal)
+        {
+            if (pieces.Count == 1 && pieces[0].OutPath == target) return File.Exists(target) ? new FileInfo(target).Length : 0;
+            long total = 0;
+            using (var o = new FileStream(target, FileMode.Create, FileAccess.Write, FileShare.None, 1 << 20))
+            {
+                foreach (var p in pieces)
+                {
+                    if (!File.Exists(p.OutPath)) break;
+                    var fi = new FileInfo(p.OutPath);
+                    using (var s = new FileStream(p.OutPath, FileMode.Open, FileAccess.Read, FileShare.Read, 1 << 20)) s.CopyTo(o, 1 << 20);
+                    total += fi.Length;
+                    if (fi.Length < p.Length) break;
+                }
+            }
+            foreach (var p in pieces) { try { File.Delete(p.OutPath); } catch { } }
+            return total;
+        }
+
         public static long RangeLength(Gpt g, IEnumerable<string> names)
         {
             var set = new HashSet<string>(names, StringComparer.OrdinalIgnoreCase);

@@ -306,6 +306,7 @@ static class TestMain
                         Console.WriteLine("minimal:" + string.Join(",", SpDump.ReadScatter(ms).Select(e => e.Name)) + "," + Path.GetFileName(ms));
                         Console.WriteLine("partids:" + string.Join(",", SpDump.UserPartIds(false)) + "|" + string.Join(",", SpDump.UserPartIds(true)) + "|" + string.Join(",", SpDump.Boot1PartIds));
                         Console.WriteLine("preloader:" + SpDump.LooksLikePreloader(new byte[] { 0x4D, 0x4D, 0x4D, 0x01, 0 }) + "," + SpDump.LooksLikePreloader(new byte[] { 1, 2, 3, 4, 5 }) + "," + SpDump.LooksLikePreloader(null));
+                        { var ch = SpDump.Chunk(new SpRange { PartId = 34, Start = 0, Length = 5830082560L, OutPath = "x.bin" }, SpDump.MaxReadBytes); long pos = 0; bool ok = true; foreach (var c in ch) { ok &= c.Start == pos && c.Length > 0 && c.Length < 0x100000000L; pos += c.Length; } Console.WriteLine("chunks:" + ch.Count + "," + ok + "," + (pos == 5830082560L) + "," + SpDump.Chunk(new SpRange { PartId = 8, Start = 0, Length = 0x8000, OutPath = "y.bin" }, SpDump.MaxReadBytes).Count); }
                         return 0;
                     }
                 case "ls":

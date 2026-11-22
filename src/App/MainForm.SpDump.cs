@@ -207,12 +207,13 @@ namespace Ro2rwPc
                         string scatter = SpDump.WriteMinimalScatter(tmp, plan.Platform, plan.Ufs);   // SP needs the chip in a scatter (plus a disabled rom entry, added by BuildRangeConfig)
                         string full = Path.Combine(tmp, "full_dump.bin");
                         long len = SpDump.RangeLength(gpt, names);
-                        var ranges = new List<SpRange> { new SpRange { PartId = plan.PartId > 0 ? plan.PartId : SpDump.UserPartId(plan.Ufs), Start = 0, Length = len, OutPath = full } };
+                        var pieces = SpDump.Chunk(new SpRange { PartId = plan.PartId > 0 ? plan.PartId : SpDump.UserPartId(plan.Ufs), Start = 0, Length = len, OutPath = full }, SpDump.MaxReadBytes);
+                        var ranges = new List<SpRange>(pieces);
                         var preRanges = SpDump.Boot1PartIds.Select(id => new SpRange { PartId = id, Start = 0, Length = SpDump.PreloaderReadBytes, OutPath = Path.Combine(tmp, "pre_" + id + ".bin") }).ToList();
                         if (plan.Preloader) ranges.AddRange(preRanges);
                         string cfg = SpDump.BuildRangeConfig(tmp, "sp_dump_config.xml", da, plan.Platform, plan.Ufs, com, scatter, ranges);
                         int rc = RunSpConsole(ft, cfg, com, tmp);
-                        long got = File.Exists(full) ? new FileInfo(full).Length : 0;
+                        long got = SpDump.Join(pieces, full, len);
                         if (got == 0) throw new IOException("SP לא יצרה את קובץ הדאמפ (קוד " + rc + "). ראה sp_readback_log.txt");
                         if (got < len) Log("! הדאמפ קטן מהצפוי (" + Converter.Human(got) + " מתוך " + Converter.Human(len) + "). מחיצות חלקיות ידולגו.", Color.Khaki);
                         Log("חותך את הדאמפ לפי טבלת המחיצות...");

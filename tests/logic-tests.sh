@@ -64,5 +64,7 @@ check "minimal scatter has only pgpt"           "minimal:pgpt,MT6765_empty_scatt
 check "part-id candidates (SP sample first)"    "partids:34,8|34,2,3|32,1" "$(sdt partids)"
 check "preloader magic check"                   "preloader:True,False,False" "$(sdt preloader)"
 
+check "range over 4 GiB is split (SP length is 32-bit)" "chunks:6,True,True,1" "$(sdt chunks)"
+
 echo "Ran $n logic tests, $fail failed"
 [ $fail -eq 0 ]

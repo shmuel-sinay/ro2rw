@@ -16,7 +16,9 @@ static class RangeTool
         if (a.Length < 6) { Console.WriteLine("usage: sprange <flash_tool.exe> <chip> <gpt.bin> <outDir> <part-id> <names>"); return 2; }
         string ft = a[0], chip = a[1].ToUpperInvariant(), dir = Path.GetFullPath(a[3]);
         int partId = int.Parse(a[4]);
-        var names = a[5].Split(',');
+        var g0 = Gpt.Parse(File.ReadAllBytes(a[2]));
+        var skipAll = new[] { "userdata", "otp", "flashinfo" };
+        var names = a[5] == "*" ? g0.Parts.Select(p => p.Name).Where(n => !skipAll.Contains(n)).ToArray() : a[5].Split(',');
         var g = Gpt.Parse(File.ReadAllBytes(a[2]));
         string da = SpFlashTool.FindDa(ft);
         Directory.CreateDirectory(dir);
@@ -24,7 +26,8 @@ static class RangeTool
         string full = Path.Combine(dir, "full.bin");
         if (File.Exists(full)) File.Delete(full);
         string scatter = SpDump.WriteMinimalScatter(dir, chip, false);
-        var ranges = new List<SpRange> { new SpRange { PartId = partId, Start = 0, Length = len, OutPath = full } };
+        var pieces = SpDump.Chunk(new SpRange { PartId = partId, Start = 0, Length = len, OutPath = full }, SpDump.MaxReadBytes);
+        var ranges = new List<SpRange>(pieces);
         string cfg = SpDump.BuildRangeConfig(dir, "range_config.xml", da, chip, false, null, scatter, ranges);
         Console.WriteLine("range 0.." + len + " (" + Converter.Human(len) + ")  Connect the powered-off device now...");
         var log = new StringBuilder(); var sw = Stopwatch.StartNew();
@@ -46,6 +49,7 @@ static class RangeTool
             Thread.Sleep(5000);
         }
         File.WriteAllText(Path.Combine(dir, "range_log.txt"), log.ToString(), new UTF8Encoding(true));
+        SpDump.Join(pieces, full, len);
         if (!File.Exists(full)) { Console.WriteLine("no dump file"); return 1; }
         Console.WriteLine("full.bin: " + new FileInfo(full).Length + " bytes (expected " + len + ")");
         List<string> skipped;
