@@ -71,6 +71,7 @@ check "unlock: mtkclient is tried before fastboot" "mtkclient (DA, seccfg)|fastb
 check "unlock: falls back to fastboot when mtkclient fails" "mtkclient (DA, seccfg)|fastboot flashing unlock=>fastboot flashing unlock" "$(sdu unlockfallback)"
 check "unlock: no method works -> none" "True" "$(sdu unlocknone)"
 check "unlock: fastboot output judged correctly" "True,False,False" "$(sdu fbok)"
+check "unlock: user can pick fastboot only or mtkclient only" "fastboot flashing unlock=>mtkclient (DA, seccfg)=>2" "$(sdu unlockchoice)"
 check "unlock: commands and warnings" "da seccfg unlock|flashing unlock|True|True" "$(sdu unlockargs)"
 echo "Ran $n logic tests, $fail failed"
 [ $fail -eq 0 ]

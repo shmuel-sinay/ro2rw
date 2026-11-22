@@ -10,16 +10,16 @@ namespace Ro2rwPc
 {
     public sealed partial class MainForm
     {
-        /// <summary>Opens the bootloader: mtkclient (DA, seccfg) first, then fastboot. Each method shows its own warning before it runs.</summary>
+        /// <summary>Opens the bootloader. The user picks the method first: mtkclient (then fastboot if it fails), or fastboot only. Each shown warning comes before the run.</summary>
         void UnlockBootloader()
         {
-            var ok = MessageBox.Show(this,
-                "פתיחת בוטלודר. הסדר: mtkclient (DA) ואז fastboot. אם הראשונה נכשלת, עוברים לשנייה.\n\n" +
-                "1. " + BootloaderUnlock.Mtk.Warning + "\n\n" +
-                "2. " + BootloaderUnlock.Fastboot.Warning + "\n\n" +
-                "להמשיך?",
-                "פתיחת בוטלודר", MessageBoxButtons.OKCancel, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2, MessageBoxOptions.RtlReading | MessageBoxOptions.RightAlign);
-            if (ok != DialogResult.OK) return;
+            var choice = AskUnlockChoice();
+            if (choice == null) return;
+            var methods = BootloaderUnlock.Order(choice.Value);
+            var text = new StringBuilder("פתיחת בוטלודר. הדרך שנבחרה:\n\n");
+            foreach (var m in methods) text.Append("• " + m.Name + "\n" + m.Warning + "\n\n");
+            if (MessageBox.Show(this, text.Append("להמשיך?").ToString(), "פתיחת בוטלודר", MessageBoxButtons.OKCancel, MessageBoxIcon.Warning,
+                MessageBoxDefaultButton.Button2, MessageBoxOptions.RtlReading | MessageBoxOptions.RightAlign) != DialogResult.OK) return;
             cancel = false;
             SetBusy(true);
             worker = new Thread(() =>
@@ -33,8 +33,8 @@ namespace Ro2rwPc
                         Log("  מנסה: " + m.Name + " ...");
                         if (m == BootloaderUnlock.Mtk) return UnlockViaMtk();
                         return UnlockViaFastboot();
-                    });
-                    if (won == null) Log("✖ אף דרך לא הצליחה. המכשיר לא השתנה לפי הלוג.", Color.Khaki);
+                    }, null, choice.Value);
+                    if (won == null) Log("✖ הפתיחה לא הצליחה. המכשיר לא השתנה לפי הלוג.", Color.Khaki);
                     else Log("✔ הבוטלודר נפתח דרך " + won.Name, Color.LightGreen);
                 }
                 catch (OperationCanceledException) { Log("בוטל.", Color.Khaki); }
@@ -44,14 +44,41 @@ namespace Ro2rwPc
             worker.Start();
         }
 
+        /// <summary>null = the user closed the question.</summary>
+        BootloaderUnlock.Choice? AskUnlockChoice()
+        {
+            var r = MessageBox.Show(this,
+                "איך לפתוח את הבוטלודר?\n\n" +
+                "כן (מומלץ): mtkclient דרך ה-DA. אם לא מזוהה תוך " + (int)BootloaderUnlock.MtkWaitLimit.TotalMinutes + " דקות, עוברים ל-fastboot.\n" +
+                "לא: fastboot בלבד (המכשיר חייב לעלות ל-fastboot, ואפשר לבחור את זה מראש).\n" +
+                "ביטול: לא לפתוח.",
+                "פתיחת בוטלודר", MessageBoxButtons.YesNoCancel, MessageBoxIcon.Question, MessageBoxDefaultButton.Button1,
+                MessageBoxOptions.RtlReading | MessageBoxOptions.RightAlign);
+            if (r == DialogResult.Yes) return BootloaderUnlock.Choice.Auto;
+            if (r == DialogResult.No) return BootloaderUnlock.Choice.FastbootOnly;
+            return null;
+        }
+
         bool UnlockViaMtk()
         {
             string exe;
             try { exe = MtkClient.EnsureExe(); }
             catch (Exception ex) { Log("  " + ex.Message, Color.Khaki); return false; }
-            var runner = new MtkClient { Log = s => Log(s), Status = SetStatus, Cancelled = () => cancel };
+            var deadline = DateTime.UtcNow + BootloaderUnlock.MtkWaitLimit;
+            bool timedOut = false;
+            var runner = new MtkClient
+            {
+                Log = s => Log(s), Status = SetStatus,
+                Cancelled = () => { if (DateTime.UtcNow > deadline) timedOut = true; return cancel || timedOut; }
+            };
             var cap = new StringBuilder();
-            int rc = runner.Run(BootloaderUnlock.MtkArgs, Path.GetDirectoryName(exe), cap);
+            int rc;
+            try { rc = runner.Run(BootloaderUnlock.MtkArgs, Path.GetDirectoryName(exe), cap); }
+            catch (OperationCanceledException) when (timedOut && !cancel)
+            {
+                Log("  mtkclient לא זיהה את המכשיר תוך " + (int)BootloaderUnlock.MtkWaitLimit.TotalMinutes + " דקות. ממשיכים לדרך הבאה.", Color.Khaki);
+                return false;
+            }
             Log("  mtkclient יצא עם קוד " + rc, rc == 0 ? Color.LightGreen : Color.Khaki);
             return rc == 0;
         }

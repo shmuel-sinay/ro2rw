@@ -319,6 +319,7 @@ static class TestMain
                         var none = BootloaderUnlock.RunFirstThatWorks(m => false);
                         Console.WriteLine("unlocknone:" + (none == null));
                         Console.WriteLine("fbok:" + BootloaderUnlock.FastbootSucceeded(0, "OKAY [ 0.001s]") + "," + BootloaderUnlock.FastbootSucceeded(1, "") + "," + BootloaderUnlock.FastbootSucceeded(0, "FAILED (remote: 'not allowed')"));
+                        Console.WriteLine("unlockchoice:" + string.Join("|", BootloaderUnlock.Order(BootloaderUnlock.Choice.FastbootOnly).Select(m => m.Name)) + "=>" + string.Join("|", BootloaderUnlock.Order(BootloaderUnlock.Choice.MtkOnly).Select(m => m.Name)) + "=>" + BootloaderUnlock.MtkWaitLimit.TotalMinutes);
                         Console.WriteLine("unlockargs:" + BootloaderUnlock.MtkArgs + "|" + BootloaderUnlock.FastbootArgs + "|" + BootloaderUnlock.Mtk.Warning.Contains("userdata") + "|" + BootloaderUnlock.Fastboot.Warning.Contains("factory reset"));
                         return 0;
                     }

@@ -38,13 +38,26 @@ namespace Ro2rwPc
                 "! מומלץ לגבות לפני.",
         };
 
-        /// <summary>The order in which the methods are tried.</summary>
-        public static IList<UnlockMethod> Order() { return new List<UnlockMethod> { Mtk, Fastboot }; }
+        /// <summary>Which methods to try: both (mtkclient first, fastboot if it fails), or only one of them.</summary>
+        public enum Choice { Auto, MtkOnly, FastbootOnly }
+
+        /// <summary>How long mtkclient waits for the device before giving up (it retries forever otherwise, so fastboot would never run).</summary>
+        public static readonly TimeSpan MtkWaitLimit = TimeSpan.FromMinutes(2);
+
+        public static IList<UnlockMethod> Order(Choice choice = Choice.Auto)
+        {
+            switch (choice)
+            {
+                case Choice.MtkOnly: return new List<UnlockMethod> { Mtk };
+                case Choice.FastbootOnly: return new List<UnlockMethod> { Fastboot };
+                default: return new List<UnlockMethod> { Mtk, Fastboot };
+            }
+        }
 
         /// <summary>Runs the methods in order. <paramref name="attempt"/> returns true on success. Returns the method that worked, or null if none did.</summary>
-        public static UnlockMethod RunFirstThatWorks(Func<UnlockMethod, bool> attempt, Action<UnlockMethod> before = null)
+        public static UnlockMethod RunFirstThatWorks(Func<UnlockMethod, bool> attempt, Action<UnlockMethod> before = null, Choice choice = Choice.Auto)
         {
-            foreach (var m in Order())
+            foreach (var m in Order(choice))
             {
                 if (before != null) before(m);
                 if (attempt(m)) return m;
