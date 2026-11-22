@@ -25,7 +25,7 @@ namespace Ro2rwPc
         readonly ToolTip tips = new ToolTip { AutoPopDelay = 15000, InitialDelay = 400 };
         float zoom = 1f;
         MenuStrip menu;
-        Button btnNewProj, btnOpenDir, btnAddFiles, btnRefresh, btnRun, btnCancel, btnOpenEdited, btnDump, btnDriver;
+        Button btnNewProj, btnOpenDir, btnAddFiles, btnRefresh, btnRun, btnCancel, btnOpenEdited, btnDump, btnDriver, btnUnlock;
         CheckBox cbSkipUserdata;
         Label lblStatus;
         Label lblProj;
@@ -219,7 +219,9 @@ namespace Ro2rwPc
             // legacy alias so existing code paths keep working
             btnDump = new Button { Visible = false };
             btnDump.Click += (s, e) => DumpRom();
-            t.Controls.AddRange(new Control[] { cmbEngineDump, cbSkipUserdata, btnDriver, btnDump });
+            btnUnlock = new Button { Text = "פתח בוטלודר...", Location = new Point(250, 190), Size = new Size(230, 32) };
+            btnUnlock.Click += (s, e) => UnlockBootloader();
+            t.Controls.AddRange(new Control[] { cmbEngineDump, cbSkipUserdata, btnDriver, btnUnlock, btnDump });
             btnDumpGo = RunButton(t, "שאב רום מהמכשיר", (s, e) => DumpRom());
             btnDumpGo.BackColor = Color.FromArgb(21, 101, 192);
             return t;

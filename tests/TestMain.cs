@@ -309,6 +309,19 @@ static class TestMain
                         { var ch = SpDump.Chunk(new SpRange { PartId = 34, Start = 0, Length = 5830082560L, OutPath = "x.bin" }, SpDump.MaxReadBytes); long pos = 0; bool ok = true; foreach (var c in ch) { ok &= c.Start == pos && c.Length > 0 && c.Length < 0x100000000L; pos += c.Length; } Console.WriteLine("chunks:" + ch.Count + "," + ok + "," + (pos == 5830082560L) + "," + SpDump.Chunk(new SpRange { PartId = 8, Start = 0, Length = 0x8000, OutPath = "y.bin" }, SpDump.MaxReadBytes).Count); }
                         return 0;
                     }
+                case "unlock":
+                    {
+                        var order = BootloaderUnlock.Order().Select(m => m.Name).ToArray();
+                        Console.WriteLine("unlockorder:" + string.Join("|", order));
+                        var tried = new System.Collections.Generic.List<string>();
+                        var won = BootloaderUnlock.RunFirstThatWorks(m => { tried.Add(m.Name); return m == BootloaderUnlock.Fastboot; });
+                        Console.WriteLine("unlockfallback:" + string.Join("|", tried) + "=>" + (won == null ? "none" : won.Name));
+                        var none = BootloaderUnlock.RunFirstThatWorks(m => false);
+                        Console.WriteLine("unlocknone:" + (none == null));
+                        Console.WriteLine("fbok:" + BootloaderUnlock.FastbootSucceeded(0, "OKAY [ 0.001s]") + "," + BootloaderUnlock.FastbootSucceeded(1, "") + "," + BootloaderUnlock.FastbootSucceeded(0, "FAILED (remote: 'not allowed')"));
+                        Console.WriteLine("unlockargs:" + BootloaderUnlock.MtkArgs + "|" + BootloaderUnlock.FastbootArgs + "|" + BootloaderUnlock.Mtk.Warning.Contains("userdata") + "|" + BootloaderUnlock.Fastboot.Warning.Contains("factory reset"));
+                        return 0;
+                    }
                 case "ls":
                     using (var src = new RawFileSource(a[1]))
                     {
