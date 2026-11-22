@@ -73,7 +73,7 @@ namespace Ro2rwPc
             var runner = new MtkClient { Log = s => Log(s), Status = SetStatus, Cancelled = () => cancel };
             string args = "-i \"" + cfg + "\"" + (string.IsNullOrEmpty(com) ? "" : " -p " + com);
             var cap = new StringBuilder();
-            int rc = runner.RunExe(ft, args, Path.GetDirectoryName(ft), cap, "flash_tool");
+            int rc = SpFlashTool.RunExeRetry(runner, ft, args, Path.GetDirectoryName(ft), cap, "flash_tool");
             try { File.WriteAllText(Path.Combine(logDir, "sp_readback_log.txt"), cap.ToString(), new UTF8Encoding(true)); } catch { }
             return rc;
         }
@@ -130,7 +130,7 @@ namespace Ro2rwPc
                     Log(""); Log("▶ SP Flash Tool - קריאת טבלת מחיצות. ממתין למכשיר במצב BROM...", Color.DeepSkyBlue);
                     if (Directory.Exists(tmp)) Directory.Delete(tmp, true);
                     Directory.CreateDirectory(tmp);
-                    string scatter = SpDump.WriteMinimalScatter(tmp, plan.Platform, plan.Ufs);
+                    string scatter = SpDump.WriteMinimalScatter(tmp, plan.Platform, plan.Ufs);   // SP needs the chip in a scatter (plus a disabled rom entry, added by BuildRangeConfig)
                     // part-id is not certain (SP's own sample uses 34, the DA enum says 8): read the table under each candidate in one session and keep the one that works
                     int[] ids = (plan.PartId > 0 && plan.PartId != SpDump.UserPartId(plan.Ufs)) ? new[] { plan.PartId } : SpDump.UserPartIds(plan.Ufs);
                     var gptRanges = ids.Select(id => new SpRange { PartId = id, Start = 0, Length = SpDump.GptReadBytes, OutPath = Path.Combine(tmp, "gpt_" + id + ".bin") }).ToList();
@@ -204,7 +204,7 @@ namespace Ro2rwPc
                     }
                     else
                     {
-                        string scatter = SpDump.WriteMinimalScatter(tmp, plan.Platform, plan.Ufs);
+                        string scatter = SpDump.WriteMinimalScatter(tmp, plan.Platform, plan.Ufs);   // SP needs the chip in a scatter (plus a disabled rom entry, added by BuildRangeConfig)
                         string full = Path.Combine(tmp, "full_dump.bin");
                         long len = SpDump.RangeLength(gpt, names);
                         var ranges = new List<SpRange> { new SpRange { PartId = plan.PartId > 0 ? plan.PartId : SpDump.UserPartId(plan.Ufs), Start = 0, Length = len, OutPath = full } };

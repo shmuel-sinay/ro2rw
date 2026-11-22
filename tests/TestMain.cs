@@ -290,6 +290,9 @@ static class TestMain
                         string rc = SpDump.BuildRangeConfig(dir, "rb.xml", da, "MT6765", false, null, null, new[] { new SpRange { PartId = 8, Start = 0, Length = SpDump.GptReadBytes, OutPath = Path.Combine(dir, "gpt.bin") } });
                         string rtext = File.ReadAllText(rc);
                         Console.WriteLine("rangecfg:" + rtext.Contains("<readback>") + "," + rtext.Contains("part-id=\"8\"") + "," + rtext.Contains("readback-length=\"0x0000000000008000\"") + "," + rtext.Contains("start-address=\"0x0000000000000000\"") + "," + rtext.Contains("<readback-withoutscatter>"));
+                        string sc2 = SpDump.WriteMinimalScatter(dir, "MT6765", false);
+                        string r2 = File.ReadAllText(SpDump.BuildRangeConfig(dir, "rb2.xml", da, "MT6765", false, null, sc2, new[] { new SpRange { PartId = 34, Start = 0, Length = 0x8000, OutPath = Path.Combine(dir, "g.bin") } }));
+                        Console.WriteLine("rangecfg2:" + r2.Contains("<rom index=\"0\" enable=\"false\">") + "," + File.Exists(Path.Combine(dir, "placeholder.img")) + "," + r2.Contains("MT6765_empty_scatter.txt"));
                         string fc = SpDump.BuildByNameFlashConfig(dir, da, "MT6765", false, "COM5", new[] { new System.Collections.Generic.KeyValuePair<string, string>("boot_a", Path.Combine(dir, "out", "boot_a.img")) });
                         string ftext = File.ReadAllText(fc);
                         Console.WriteLine("flashcfg:" + ftext.Contains("<download-withoutScatter>") + "," + ftext.Contains("partition=\"boot_a\"") + "," + ftext.Contains("BromUART") + "," + ftext.Contains("<da-download-all"));

@@ -163,6 +163,23 @@ namespace Ro2rwPc
             return path;
         }
 
+        /// <summary>SP fails the BROM handshake (STATUS_BROM_CMD_STARTCMD_FAIL) when the cable goes in at the wrong moment; the cure is to unplug and plug again,
+        /// so run it again (up to <paramref name="attempts"/> times) while that is the only problem. Output of every attempt is appended to <paramref name="cap"/>.</summary>
+        public static int RunExeRetry(MtkClient runner, string exe, string args, string workDir, StringBuilder cap, string label, int attempts = 10, int waitMs = 4000)
+        {
+            int rc = 0;
+            for (int i = 1; i <= attempts; i++)
+            {
+                var one = new StringBuilder();
+                rc = runner.RunExe(exe, args, workDir, one, label);
+                lock (cap) cap.Append(one.ToString());
+                if (rc == 0 || one.ToString().IndexOf("STARTCMD_FAIL", StringComparison.OrdinalIgnoreCase) < 0 || i == attempts) return rc;
+                runner.Log("לחיצת היד עם המכשיר נכשלה (ניסיון " + i + " מתוך " + attempts + "). נתק את הכבל, המתן שנייה וחבר שוב (אפשר להחזיק כפתור וולום).");
+                for (int k = 0; k < waitMs / 100; k++) { if (runner.Cancelled()) throw new OperationCanceledException(); System.Threading.Thread.Sleep(100); }
+            }
+            return rc;
+        }
+
         /// <summary>Runs flash_tool.exe on a readback config. Success = every requested file exists and is non-empty (the log text is not trusted).
         /// Returns the partitions that were read.</summary>
         public static List<string> RunReadback(string flashToolExe, string configPath, string outDir, IList<string> partitions, string comPort, MtkClient runner)
@@ -170,7 +187,7 @@ namespace Ro2rwPc
             Directory.CreateDirectory(outDir);
             string args = "-i \"" + configPath + "\"" + (string.IsNullOrEmpty(comPort) ? "" : " -p " + comPort);
             var cap = new StringBuilder();
-            int rc = runner.RunExe(flashToolExe, args, Path.GetDirectoryName(flashToolExe), cap, "flash_tool");
+            int rc = RunExeRetry(runner, flashToolExe, args, Path.GetDirectoryName(flashToolExe), cap, "flash_tool");
             try { File.WriteAllText(Path.Combine(Path.GetDirectoryName(configPath), "sp_readback_log.txt"), cap.ToString(), new UTF8Encoding(true)); } catch { }
             var done = new List<string>();
             foreach (var p in partitions)
@@ -201,7 +218,7 @@ namespace Ro2rwPc
         {
             string args = "-b -i \"" + configPath + "\"" + (string.IsNullOrEmpty(comPort) ? "" : " -p " + comPort);
             var cap = new StringBuilder();
-            int rc = runner.RunExe(flashToolExe, args, Path.GetDirectoryName(flashToolExe), cap, "flash_tool");
+            int rc = RunExeRetry(runner, flashToolExe, args, Path.GetDirectoryName(flashToolExe), cap, "flash_tool");
             string text = cap.ToString();
             try { File.WriteAllText(Path.Combine(Path.GetDirectoryName(configPath), "sp_flash_log.txt"), text, new UTF8Encoding(true)); } catch { }
             string low = text.ToLowerInvariant();

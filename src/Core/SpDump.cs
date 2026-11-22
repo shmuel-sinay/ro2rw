@@ -92,7 +92,7 @@ namespace Ro2rwPc
                 throw new FileNotFoundException("לא נמצא קובץ DA (MTK_AllInOne_DA.bin). בחר אותו מתיקיית SP Flash Tool.");
         }
 
-        static string Header(string platform, string da, bool ufs, string scatterPath, string comPort)
+        static string Header(string platform, string da, bool ufs, string scatterPath, string comPort, string disabledRom = null)
         {
             var sb = new StringBuilder();
             sb.AppendLine("<?xml version=\"1.0\" encoding=\"UTF-8\" ?>");
@@ -102,7 +102,7 @@ namespace Ro2rwPc
             sb.AppendLine("    <storage-type>" + (ufs ? "UFS" : "EMMC") + "</storage-type>");
             sb.AppendLine("    <download-agent>" + SpFlashTool.Esc(da) + "</download-agent>");
             sb.AppendLine("    <scatter>" + (string.IsNullOrEmpty(scatterPath) ? "" : SpFlashTool.Esc(scatterPath)) + "</scatter>");
-            sb.AppendLine("    <rom-list></rom-list>");
+            sb.AppendLine(disabledRom == null ? "    <rom-list></rom-list>" : "    <rom-list><rom index=\"0\" enable=\"false\">" + SpFlashTool.Esc(disabledRom) + "</rom></rom-list>");
             sb.AppendLine("    " + SpFlashTool.Connection(comPort));
             sb.AppendLine("  </general>");
             sb.AppendLine("  <commands>");
@@ -114,7 +114,15 @@ namespace Ro2rwPc
         {
             CheckBase(platform, da);
             if (ranges == null || ranges.Count == 0) throw new InvalidOperationException("אין טווחים לשאיבה");
-            var sb = new StringBuilder(Header(platform, da, ufs, scatterPath, comPort));
+            // SP matches the chip against the scatter's platform (an empty scatter fails with STATUS_SCATTER_HW_CHIP_ID_MISMATCH), and with a scatter but an
+            // empty rom-list it tries to auto-load images and exits (S_FILEPATH_NOT_SPECIFIED_YET). A scatter plus one disabled rom entry avoids both.
+            string placeholder = null;
+            if (!string.IsNullOrEmpty(scatterPath))
+            {
+                placeholder = Path.Combine(Path.GetDirectoryName(scatterPath), "placeholder.img");
+                if (!File.Exists(placeholder)) File.WriteAllBytes(placeholder, new byte[16]);
+            }
+            var sb = new StringBuilder(Header(platform, da, ufs, scatterPath, comPort, placeholder));
             sb.AppendLine("    <!-- READ ONLY - nothing is written to the device -->");
             sb.AppendLine("    <readback>");
             sb.AppendLine("      <physical-readback is-physical-readback=\"false\" />");

@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>WinExe</OutputType><StartupObject>P3</StartupObject><TargetFramework>net48</TargetFramework><LangVersion>7.3</LangVersion><UseWindowsForms>true</UseWindowsForms></PropertyGroup>
+  <ItemGroup><Compile Remove="V.cs" /></ItemGroup>
+  <ItemGroup><Reference Include="RO2RW-PC"><HintPath>C:\Users\user1\source\repos\ro2rw\src\bin\Release\net48\RO2RW-PC.exe</HintPath></Reference></ItemGroup>
+</Project>

@@ -54,6 +54,7 @@ check "split cuts partitions, skips truncated"  "split:boot_a,super skipped=user
 check "split content is byte exact"             "content:32768,True,524288,True,False" "$(sdt content)"
 check "edit-partition preset names"             "preset:True,False,True,False,True,True,True,True" "$(sdt preset)"
 check "range readback config attributes"        "rangecfg:True,True,True,True,False" "$(sdt rangecfg)"
+check "range config with a scatter adds a disabled rom entry" "rangecfg2:True,True,True" "$(sdt rangecfg2)"
 check "flash-by-name config (no scatter)"       "flashcfg:True,True,True,False" "$(sdt flashcfg)"
 check "scatter from gpt lists all partitions"   "scatter:pgpt,boot_a,lk_a,super,userdata,sgpt" "$(sdt scatter)"
 check "scatter flags only dumped as download"   "scatterdl:boot_a,super" "$(sdt scatterdl)"

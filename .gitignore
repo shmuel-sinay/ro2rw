@@ -9,3 +9,6 @@ src/res/
 __pycache__/
 *.pyc
 third_party/mtkflash/logs/
+tests/sp-sim/**/bin/
+tests/sp-sim/**/obj/
+HANDOFF.md
